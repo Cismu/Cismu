@@ -1,6 +1,5 @@
-use std::num::NonZeroU32;
+use std::time::{Duration, Instant};
 
-use glow::*;
 use glutin::{
     config::{Config, ConfigTemplateBuilder},
     context::{ContextApi, ContextAttributesBuilder, PossiblyCurrentContext, Version},
@@ -9,15 +8,22 @@ use glutin::{
     surface::{GlSurface, Surface, SurfaceAttributesBuilder, SwapInterval, WindowSurface},
 };
 use glutin_winit::DisplayBuilder;
+use std::num::NonZeroU32;
 
 use winit::{
     self,
     application::ApplicationHandler,
     event::{StartCause, WindowEvent},
-    event_loop::{ActiveEventLoop, EventLoop},
+    event_loop::{ActiveEventLoop, ControlFlow, EventLoop},
     raw_window_handle::HasWindowHandle,
     window::{Window, WindowAttributes, WindowId},
 };
+
+use crate::renderer::Renderer;
+
+// Define la frecuencia de actualización deseada (por ejemplo, 60 FPS)
+const FPS: u32 = 60;
+const FRAME_DURATION: Duration = Duration::new(0, 1_000_000_000 / FPS);
 
 pub struct Application {
     window: Window,
@@ -29,25 +35,6 @@ pub struct Application {
 impl Application {
     pub fn new(event_loop: &EventLoop<()>) -> Result<Self, Box<dyn std::error::Error>> {
         let (window, gl_config) = Self::create_window(event_loop)?;
-        let (context, surface, glow_context) = Self::create_gl_context(&window, &gl_config)?;
-
-        unsafe {
-            let gl = glow::Context::from_loader_function_cstr(|s| {
-                context.display().get_proc_address(s).cast()
-            });
-
-            let version = gl.get_parameter_string(glow::VERSION);
-            println!("OpenGL version {}", version);
-
-            let buffer = gl.create_buffer().unwrap();
-            gl.bind_buffer(glow::ARRAY_BUFFER, Some(buffer));
-
-            let vertices: Vec<f32> = vec![-0.5, -0.5, 0.0, 0.5, 0.5, -0.5];
-            let data = bytemuck::cast_slice(&vertices);
-            gl.buffer_data_u8_slice(glow::ARRAY_BUFFER, data, glow::STATIC_DRAW);
-            gl.enable_vertex_attrib_array(0);
-            gl.vertex_attrib_pointer_f32(0, 2, glow::FLOAT, false, size_of::<f32>() as i32 * 2, 0);
-        }
 
         let app = Self {
             window,
@@ -84,14 +71,7 @@ impl Application {
     fn create_gl_context(
         window: &Window,
         gl_config: &Config,
-    ) -> Result<
-        (
-            PossiblyCurrentContext,
-            Surface<WindowSurface>,
-            glow::Context,
-        ),
-        Box<dyn std::error::Error>,
-    > {
+    ) -> Result<(PossiblyCurrentContext, Surface<WindowSurface>), Box<dyn std::error::Error>> {
         let raw_window_handle = window.window_handle().unwrap().as_raw();
 
         let context_attributes = ContextAttributesBuilder::new()
@@ -149,20 +129,28 @@ impl Application {
             .set_swap_interval(&context, SwapInterval::Wait(NonZeroU32::new(1).unwrap()))
             .expect("Failed to set swap interval");
 
-        let glow_context = unsafe {
-            glow::Context::from_loader_function_cstr(|s| {
-                context.display().get_proc_address(s).cast()
-            })
-        };
-
-        Ok((context, surface, glow_context))
+        Ok((context, surface))
     }
 }
 
 impl ApplicationHandler for Application {
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _: WindowId, event: WindowEvent) {
         match event {
+            WindowEvent::RedrawRequested => unsafe {
+                if let Some(renderer) = &self.renderer {
+                    renderer.render();
+
+                    // Calcula el tiempo para el próximo fotograma
+                    let next_frame_time = Instant::now() + FRAME_DURATION;
+                    event_loop.set_control_flow(ControlFlow::WaitUntil(next_frame_time));
+                }
+            },
             WindowEvent::CloseRequested => {
+                if let Some(renderer) = &self.renderer {
+                    renderer.cleanup();
+                    self.renderer = None;
+                }
+
                 self.exit_state = Err("Window closed".into());
                 event_loop.exit();
             }
@@ -172,7 +160,12 @@ impl ApplicationHandler for Application {
 
     fn new_events(&mut self, _: &ActiveEventLoop, _: StartCause) {}
 
-    fn resumed(&mut self, _: &ActiveEventLoop) {}
-}
+    // This function is called when the application is resumed from a suspended state. Or when the appplication is started.
+    // This is a good place to initialize the renderer (graphics context) and other resources.
+    fn resumed(&mut self, _: &ActiveEventLoop) {
+        let ctx = Self::create_gl_context(&self.window, &self.gl_config).unwrap();
+        let (context, surface) = ctx;
 
-pub struct Renderer {}
+        self.renderer = Some(Renderer::new(context, surface));
+    }
+}

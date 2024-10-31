@@ -1,4 +1,5 @@
 mod application;
+mod renderer;
 
 use crate::application::Application;
 use winit::event_loop::{ControlFlow, EventLoop};
