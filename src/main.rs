@@ -2,113 +2,152 @@ mod application;
 mod audio_api;
 mod renderer;
 
-use rand::Rng;
-use winit::event_loop::{ControlFlow, EventLoop};
-
 use crate::application::Application;
 use audio_api::{AudioBuffer, AudioContext};
+use hound::WavReader;
+use rand::Rng;
+use std::sync::{Arc, Mutex};
+use winit::event_loop::{ControlFlow, EventLoop};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Inicializa el loop de eventos y el contexto de audio
     let event_loop = EventLoop::new()?;
-
-    // Crear un buffer estéreo de tres segundos con una tasa de muestreo de 44100 Hz
     let audio_context = AudioContext::new(None, None);
-    let my_array_buffer = audio_context.create_buffer(1, 22050, 22050.0);
 
-    // Verificar si el buffer es estéreo
-    let mut buffer = my_array_buffer.lock().unwrap();
-    if buffer.number_of_channels() == 2 {
-        println!("El buffer es estéreo.");
-    }
+    // Crea y rellena un buffer de ruido
+    let buffer = initialize_audio_buffer(&audio_context)?;
+    display_buffer_info(&buffer);
 
-    fill_audio_buffer_with_noise(&mut buffer)?;
+    // Resamplea el buffer si es necesario
+    resample_buffer_if_needed(&buffer, &audio_context)?;
 
-    println!("Tasa de muestreo: {}", buffer.sample_rate());
-    println!("Duración del buffer: {}", buffer.duration());
-    println!("Número de canales: {}", buffer.number_of_channels());
+    // Carga y muestra la información de un archivo WAV
+    let wav_buffer = load_wav_to_buffer("windows_background.wav", &audio_context)?;
 
-    let channel_data = buffer.get_channel_data(0)?;
-    for i in 0..10 {
-        print!("{:.2} ", channel_data[i]);
-    }
-    println!("...");
+    display_buffer_info(&wav_buffer);
 
-    // Verificar si necesitamos resamplear
-    if buffer.sample_rate() != audio_context.sample_rate {
-        println!(
-            "Resampleando el buffer de {}Hz a {}Hz",
-            buffer.sample_rate(),
-            audio_context.sample_rate
-        );
-        let resampled_buffer = audio_context.resample_buffer(&mut buffer)?;
-        println!("Reproduciendo el buffer resampleado a {}Hz", audio_context.sample_rate);
-
-        println!("Duración del buffer resampleado: {}", resampled_buffer.duration());
-        println!("Número de canales: {}", resampled_buffer.number_of_channels());
-        println!("Longitud del buffer resampleado: {}", resampled_buffer.length());
-    } else {
-        println!("Reproduciendo el buffer a {}Hz", audio_context.sample_rate);
-    }
-
-    let mut reader = hound::WavReader::open("windows_background.wav")?;
-    let spec = reader.spec();
-
-    // Verifica que el formato sea PCM en punto flotante o entero
-    if spec.sample_format != hound::SampleFormat::Float && spec.bits_per_sample != 16 {
-        return Err("Formato no soportado: se espera PCM de 16 bits o de punto flotante".into());
-    }
-
-    // Configura los parámetros del buffer
-    let number_of_channels = spec.channels as u32;
-    let sample_rate = spec.sample_rate as f32;
-    let samples: Vec<f32> = reader
-        .samples::<i16>()
-        .map(|s| s.unwrap() as f32 / i16::MAX as f32) // Normaliza los datos de 16 bits a rango [-1.0, 1.0]
-        .collect();
-
-    let length = samples.len() as u32 / number_of_channels;
-
-    // Crear el buffer y organizar los datos en canales
-    let mut internal_data = vec![vec![0.0; length as usize]; number_of_channels as usize];
-    for (i, sample) in samples.iter().enumerate() {
-        let channel = (i % number_of_channels as usize) as usize;
-        let frame = (i / number_of_channels as usize) as usize;
-        internal_data[channel][frame] = *sample;
-    }
-
-    let my_wav_buffer = audio_context.create_buffer_from_data(internal_data, sample_rate);
-    let my_wav_buffer = my_wav_buffer.lock().unwrap();
-    println!("Reproduciendo el buffer de un archivo WAV a {}Hz", sample_rate);
-    println!("Duración del buffer: {}", my_wav_buffer.duration());
-    println!("Número de canales: {}", my_wav_buffer.number_of_channels());
-    println!("Longitud del buffer: {}", my_wav_buffer.length());
-
-    // #################################################################################
-
-    // ControlFlow::Wait pauses the event loop if no events are available to process.
-    // This is ideal for non-game applications that only update in response to user
-    // input, and uses significantly less power/CPU time than ControlFlow::Poll.
-    event_loop.set_control_flow(ControlFlow::Wait);
-
+    // Inicializa y ejecuta la aplicación
     let mut app = Application::new(&event_loop)?;
-
+    event_loop.set_control_flow(ControlFlow::Wait);
     event_loop.run_app(&mut app)?;
 
     Ok(())
 }
 
-fn fill_audio_buffer_with_noise(buffer: &mut AudioBuffer) -> Result<(), Box<dyn std::error::Error>> {
-    let mut rng = rand::thread_rng(); // Crea un generador de números aleatorios
+fn initialize_audio_buffer(
+    audio_context: &AudioContext,
+) -> Result<Arc<Mutex<AudioBuffer>>, Box<dyn std::error::Error>> {
+    let buffer = audio_context.create_buffer(1, 22050, 22050.0);
 
-    // Itera sobre cada canal
+    {
+        let mut buffer_locked = buffer.lock().unwrap();
+        if buffer_locked.number_of_channels() == 2 {
+            println!("El buffer es estéreo.");
+        }
+
+        fill_audio_buffer_with_noise(&mut buffer_locked)?;
+    }
+
+    Ok(buffer)
+}
+
+fn fill_audio_buffer_with_noise(buffer: &mut AudioBuffer) -> Result<(), Box<dyn std::error::Error>> {
+    let mut rng = rand::thread_rng();
     for channel in 0..buffer.number_of_channels() {
         let now_buffering = buffer.get_channel_data(channel)?;
-
-        // Llenar el canal con valores aleatorios entre -1.0 y 1.0
         for sample in now_buffering.iter_mut() {
             *sample = rng.gen_range(-1.0..1.0);
         }
     }
+    Ok(())
+}
+
+fn display_buffer_info(buffer: &Arc<Mutex<AudioBuffer>>) {
+    let mut buffer_locked = buffer.lock().unwrap();
+    println!("Tasa de muestreo: {}", buffer_locked.sample_rate());
+    println!("Duración del buffer: {}", buffer_locked.duration());
+    println!("Número de canales: {}", buffer_locked.number_of_channels());
+
+    let channel_data = buffer_locked
+        .get_channel_data(0)
+        .expect("Error al obtener datos del canal");
+    for i in 0..10 {
+        print!("{:.2} ", channel_data[i]);
+    }
+    println!("...");
+}
+
+fn resample_buffer_if_needed(
+    buffer: &Arc<Mutex<AudioBuffer>>,
+    audio_context: &AudioContext,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut buffer_locked = buffer.lock().unwrap();
+    let buffer_sample_rate = buffer_locked.sample_rate();
+
+    if buffer_sample_rate != audio_context.sample_rate {
+        println!(
+            "Resampleando el buffer de {}Hz a {}Hz",
+            buffer_sample_rate, audio_context.sample_rate
+        );
+
+        // Realizamos el resampling y obtenemos el nuevo buffer sin el Arc<Mutex> (ya que la función devuelve un AudioBuffer)
+        let mut resampled_buffer = audio_context.resample_buffer(&mut buffer_locked)?;
+
+        println!("Reproduciendo el buffer resampleado a {}Hz", audio_context.sample_rate);
+        display_buffer_info_raw(&mut resampled_buffer);
+    } else {
+        println!("Reproduciendo el buffer a {}Hz", audio_context.sample_rate);
+    }
 
     Ok(())
+}
+
+// Función auxiliar para mostrar información de un AudioBuffer sin Arc<Mutex>
+fn display_buffer_info_raw(buffer: &mut AudioBuffer) {
+    println!("Tasa de muestreo: {}", buffer.sample_rate());
+    println!("Duración del buffer: {}", buffer.duration());
+    println!("Número de canales: {}", buffer.number_of_channels());
+
+    let channel_data = buffer.get_channel_data(0).expect("Error al obtener datos del canal");
+    for i in 0..10 {
+        print!("{:.2} ", channel_data[i]);
+    }
+    println!("...");
+}
+
+fn load_wav_to_buffer(
+    file_path: &str,
+    audio_context: &AudioContext,
+) -> Result<Arc<Mutex<AudioBuffer>>, Box<dyn std::error::Error>> {
+    let mut reader = WavReader::open(file_path)?;
+    let spec = reader.spec();
+
+    // Verificación de formato
+    if spec.sample_format != hound::SampleFormat::Float && spec.bits_per_sample != 16 {
+        return Err("Formato no soportado: se espera PCM de 16 bits o de punto flotante".into());
+    }
+
+    // Cargar datos y crear el buffer
+    let number_of_channels = spec.channels as u32;
+    let sample_rate = spec.sample_rate as f32;
+    let samples: Vec<f32> = reader
+        .samples::<i16>()
+        .map(|s| s.unwrap() as f32 / i16::MAX as f32)
+        .collect();
+
+    let length = samples.len() as u32 / number_of_channels;
+    let internal_data = organize_samples_into_channels(samples, number_of_channels, length);
+    let wav_buffer = audio_context.create_buffer_from_data(internal_data, sample_rate);
+
+    Ok(wav_buffer)
+}
+
+fn organize_samples_into_channels(samples: Vec<f32>, channels: u32, length: u32) -> Vec<Vec<f32>> {
+    let mut channel_data = vec![vec![0.0; length as usize]; channels as usize];
+    for (i, sample) in samples.iter().enumerate() {
+        let channel = i % channels as usize;
+        let frame = i / channels as usize;
+        channel_data[channel][frame] = *sample;
+    }
+    channel_data
 }
