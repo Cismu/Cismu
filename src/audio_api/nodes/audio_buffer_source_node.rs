@@ -241,6 +241,6 @@ impl AudioBufferSourceNode {
         let source = Arc::new(Mutex::new(self.clone()));
 
         // Añade este AudioBufferSourceNode al nodo de destino
-        destination.add_source(source.clone());
+        // destination.add_source(source.clone());
     }
 }
