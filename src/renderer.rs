@@ -53,13 +53,7 @@ impl Renderer {
             gl.bind_buffer(glow::ARRAY_BUFFER, Some(buffer));
 
             let vertices: Vec<f32> = vec![
-                -0.5, -0.5,
-                0.5, -0.5,
-                0.5, 0.5,
-
-                0.5, 0.5,
-                -0.5, 0.5,
-                -0.5, -0.5,
+                -0.5, -0.5, 0.5, -0.5, 0.5, 0.5, 0.5, 0.5, -0.5, 0.5, -0.5, -0.5,
             ];
 
             let data = bytemuck::cast_slice(&vertices);

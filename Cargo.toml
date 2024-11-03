@@ -5,8 +5,13 @@ edition = "2021"
 
 [dependencies]
 bytemuck = "1.19.0"
+cpal = "0.15.3"
 glow = "0.15.0"
 glutin = "0.32.1"
 glutin-winit = "0.5.0"
+hound = "3.5.1"
 indoc = "2.0.5"
+num-complex = "0.4.6"
+rand = "0.8.5"
+rustfft = "6.2.0"
 winit = "0.30.5"
