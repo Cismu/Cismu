@@ -1,8 +1,24 @@
 mod music_library;
 
+use music_library::{LibraryConfigBuilder, MusicLibraryBuilder};
+
 #[tauri::command]
 fn greet(name: &str) -> String {
-    format!("Hello, {}! You've been greeted from Rust!", name)
+    let config = LibraryConfigBuilder::default().build();
+    let library = MusicLibraryBuilder::new().config(config).build();
+
+    let mut library = match library {
+        Ok(l) => l,
+        Err(e) => {
+            return format!("Hello, {}! We've got a problem {}!", name, e.to_string());
+        }
+    };
+
+    if let Err(e) = library.full_scan() {
+        return format!("Hello, {}! We've got a problem {}!", name, e.to_string());
+    }
+
+    format!("Hello, {}! Everything works as expected!", name)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
