@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>Isolation Secure Script</title>
+</head>
+
+<body>
+    <script>
+        window.__TAURI_ISOLATION_HOOK__ = (payload) => {
+            console.log('hook', payload);
+            return payload;
+        };
+    </script>
+</body>
+
+</html>
