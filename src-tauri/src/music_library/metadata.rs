@@ -9,7 +9,10 @@ use lofty::{
 
 use crate::music_library::error::MetadataError;
 
-use super::track::{Artwork, AudioInfo, FileInfo, Rating, TagInfo, Track, TrackBuilder};
+use super::{
+    analysis::get_analysis,
+    track::{Artwork, AudioInfo, FileInfo, Rating, TagInfo, Track, TrackBuilder},
+};
 
 pub const MIN_FILE_SIZE_BYTES: u64 = 1024;
 pub const MIN_DURATION_SECS: f64 = 10.0;
@@ -39,6 +42,10 @@ fn get_metadata(track_builder: &mut TrackBuilder, path: &PathBuf) -> Result<()> 
     audio_info.bitrate_kbps = properties.audio_bitrate();
     audio_info.sample_rate_hz = properties.sample_rate();
     audio_info.channels = properties.channels();
+
+    if let (Some(sr), Some(ch)) = (audio_info.sample_rate_hz, audio_info.channels) {
+        audio_info.analysis = get_analysis(path, sr, ch).ok();
+    }
 
     let tag = tagged_file
         .primary_tag()

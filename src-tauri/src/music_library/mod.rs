@@ -1,3 +1,4 @@
+mod analysis;
 pub mod config;
 mod error;
 mod events;

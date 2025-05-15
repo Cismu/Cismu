@@ -28,4 +28,7 @@ rayon = "1.10.0"
 derive_builder = "0.20.2"
 lofty = "0.22.4"
 thiserror = "2.0.12"
+symphonia = { version = "0.5.4", features = ["all-codecs", "all-formats"] }
+apodize = "1.0.0"
+rustfft = "6.3.0"
 

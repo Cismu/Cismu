@@ -95,7 +95,54 @@ pub struct AudioInfo {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct AudioAnalysis {}
+pub struct AudioAnalysis {
+    pub spectral_analysis: AnalysisOutcome,
+    pub quality_score: f32,
+    pub overall_assessment: String,
+}
+
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
+pub enum AnalysisOutcome {
+    /// A significant drop was detected, indicating a cutoff.
+    CutoffDetected {
+        /// The starting frequency (Hz) of the band where the drop was first detected.
+        cutoff_frequency_hz: f32,
+        /// The calculated average dB level in the reference band.
+        reference_level_db: f32,
+        /// The average dB level in the band where the cutoff was detected.
+        cutoff_band_level_db: f32,
+    },
+    /// No significant drop was detected within the analyzed frequency range.
+    NoCutoffDetected {
+        /// The calculated average dB level in the reference band.
+        reference_level_db: f32,
+        /// The highest frequency (Hz) analyzed.
+        max_analyzed_freq_hz: f32,
+    },
+    /// Analysis could not be performed reliably due to insufficient audio data.
+    InconclusiveNotEnoughWindows {
+        /// Number of windows processed.
+        processed_windows: usize,
+        /// Minimum number of windows required for analysis.
+        required_windows: usize,
+    },
+    /// Analysis failed because the reference dB level could not be calculated.
+    /// This might happen if the reference frequency range is outside the spectrum data.
+    InconclusiveReferenceBandError,
+    /// Analysis is considered unreliable because the signal level in the reference band is too low.
+    InconclusiveLowReferenceLevel {
+        /// The calculated average dB level in the reference band.
+        reference_level_db: f32,
+    },
+
+    InconclusiveError,
+}
+
+impl Default for AnalysisOutcome {
+    fn default() -> Self {
+        AnalysisOutcome::InconclusiveError
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, Copy, PartialEq)]
 pub enum Rating {
