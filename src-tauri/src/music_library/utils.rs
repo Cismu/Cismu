@@ -32,6 +32,3 @@ impl AudioFormat {
         }
     }
 }
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct Track {}

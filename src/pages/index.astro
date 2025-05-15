@@ -2,4 +2,19 @@
 import Layout from "../layouts/Layout.astro";
 ---
 
-<Layout />
+<Layout>
+    <button type="button" id="button-send-event">Event</button>
+</Layout>
+
+<script>
+    type ButtonElement = HTMLButtonElement;
+
+    import { core } from "@tauri-apps/api";
+
+    const btn = document.getElementById("button-send-event") as ButtonElement;
+
+    btn.addEventListener("click", async (_) => {
+        let res = await core.invoke("greet", { name: "Gabriel Maizo" });
+        console.log(`${res}`);
+    });
+</script>

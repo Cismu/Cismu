@@ -3,7 +3,8 @@ mod events;
 pub mod library;
 mod metadata;
 mod scanner;
-mod storage;
+pub mod storage;
+mod track;
 mod traits;
 mod utils;
 

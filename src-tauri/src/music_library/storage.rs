@@ -1,5 +1,5 @@
+use super::track::Track;
 use super::traits::LibraryStorage;
-use super::utils::Track;
 use anyhow::Result;
 use std::path::PathBuf;
 use std::{collections::HashMap, fs};

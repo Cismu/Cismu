@@ -1,15 +1,16 @@
-use super::utils::Track;
 use anyhow::Error;
 
+use super::track::Track;
+
 /// Eventos que puede emitir la librería
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub enum LibraryEvent<'a> {
     ScanStarted,
-    TrackAdded(&'a Track),
+    TrackAdded(Track),
     TrackRemoved(u64),
     TrackUpdated(&'a Track),
     ScanFinished,
-    Error(&'a Error),
+    Error(String),
 }
 
 /// Tipo de callback para manejar eventos

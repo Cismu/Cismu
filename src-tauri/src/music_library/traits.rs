@@ -1,5 +1,4 @@
-use super::config::LibraryConfig;
-use super::utils::Track;
+use super::{config::LibraryConfig, track::Track};
 use anyhow::Result;
 use std::{collections::HashMap, collections::HashSet, path::PathBuf};
 

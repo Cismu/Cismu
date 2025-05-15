@@ -1,11 +1,19 @@
 mod music_library;
 
-use music_library::{LibraryConfigBuilder, MusicLibraryBuilder};
+use music_library::{storage::JsonStorage, LibraryConfigBuilder, MusicLibraryBuilder};
 
 #[tauri::command]
 fn greet(name: &str) -> String {
-    let config = LibraryConfigBuilder::default().build();
-    let library = MusicLibraryBuilder::new().config(config).build();
+    let config = LibraryConfigBuilder::default()
+        .database_path("..\\default.db")
+        .include("C:\\Users\\maizo\\Videos")
+        .build();
+    let storage = JsonStorage::new(config.database_path.clone());
+
+    let library = MusicLibraryBuilder::new()
+        .config(config)
+        .storage(storage)
+        .build();
 
     let mut library = match library {
         Ok(l) => l,
@@ -17,6 +25,9 @@ fn greet(name: &str) -> String {
     if let Err(e) = library.full_scan() {
         return format!("Hello, {}! We've got a problem {}!", name, e.to_string());
     }
+
+    let tracks = library.get_all_tracks();
+    println!("{:?}", tracks);
 
     format!("Hello, {}! Everything works as expected!", name)
 }
