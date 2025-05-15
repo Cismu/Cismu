@@ -6,8 +6,9 @@ use music_library::{storage::JsonStorage, LibraryConfigBuilder, MusicLibraryBuil
 fn greet(name: &str) -> String {
     let config = LibraryConfigBuilder::default()
         .database_path("..\\default.db")
-        .include("C:\\Users\\maizo\\Videos")
-        .build();
+        .scan_directories(vec!["C:\\Users\\maizo\\Videos".into()])
+        .build()
+        .unwrap();
     let storage = JsonStorage::new(config.database_path.clone());
 
     let library = MusicLibraryBuilder::new()
