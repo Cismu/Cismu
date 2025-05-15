@@ -1,4 +1,5 @@
 pub mod config;
+mod error;
 mod events;
 pub mod library;
 mod metadata;

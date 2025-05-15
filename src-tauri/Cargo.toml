@@ -26,4 +26,6 @@ anyhow = "1.0.98"
 walkdir = "2.5.0"
 rayon = "1.10.0"
 derive_builder = "0.20.2"
+lofty = "0.22.4"
+thiserror = "2.0.12"
 

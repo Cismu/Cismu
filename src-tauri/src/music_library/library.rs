@@ -34,15 +34,10 @@ impl<S: Scanner, St: LibraryStorage> MusicLibrary<S, St> {
         }
 
         let new_paths: HashSet<_> = current.difference(&cached).cloned().collect();
-        let del_paths: HashSet<_> = cached.difference(&current).cloned().collect();
         let existing: Vec<_> = current.intersection(&cached).cloned().collect();
 
         // Borrados
-        for p in &del_paths {
-            if let Some(&id) = path_to_id.get(p) {
-                self.tracks.remove(&id);
-            }
-        }
+        self.tracks.retain(|_, tr| current.contains(&tr.path));
 
         // Nuevos
         let next_atomic = AtomicU64::new(self.next_id);
@@ -55,8 +50,6 @@ impl<S: Scanner, St: LibraryStorage> MusicLibrary<S, St> {
                 metadata::process(&mut track, p)
             })
             .collect();
-
-        self.next_id = next_atomic.load(Ordering::Relaxed);
 
         for tr in new_tracks {
             let id = tr.id;
@@ -81,6 +74,9 @@ impl<S: Scanner, St: LibraryStorage> MusicLibrary<S, St> {
         }
 
         self.storage.save(&self.tracks)?;
+
+        self.next_id = next_atomic.load(Ordering::Relaxed);
+
         Ok(())
     }
 

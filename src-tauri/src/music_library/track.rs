@@ -1,12 +1,17 @@
-use std::{fs, path::PathBuf, time::UNIX_EPOCH};
+use std::{
+    fs,
+    path::PathBuf,
+    time::{Duration, UNIX_EPOCH},
+};
 
 use derive_builder::Builder;
+use lofty::tag::Tag;
 use serde::{Deserialize, Serialize};
 
 use super::metadata::MIN_FILE_SIZE_BYTES;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Builder, Default)]
-#[builder(setter(into, strip_option))]
+#[builder(setter(into, strip_option), default)]
 pub struct Track {
     pub id: u64,
     pub path: PathBuf,
@@ -67,7 +72,7 @@ pub struct TagInfo {
     pub publisher: Option<String>,
     pub comments: Option<String>,
 
-    pub artwork: Option<Artwork>,
+    pub artwork: Option<Vec<Artwork>>,
     pub rating: Rating,
 }
 
@@ -75,11 +80,12 @@ pub struct TagInfo {
 pub struct Artwork {
     pub data: Vec<u8>,
     pub mime_type: String,
+    pub description: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AudioInfo {
-    pub duration_secs: f32,
+    pub duration_secs: Duration,
     pub bitrate_kbps: Option<u32>,
     pub sample_rate_hz: Option<u32>,
     pub channels: Option<u8>,
@@ -91,5 +97,38 @@ pub struct AudioInfo {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AudioAnalysis {}
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct Rating {}
+#[derive(Debug, Clone, Serialize, Deserialize, Copy, PartialEq)]
+pub enum Rating {
+    Unrated,
+    Stars(f32),
+}
+
+impl Rating {
+    pub fn new(value: f32) -> Self {
+        if value < 1.0 || value > 5.0 {
+            Rating::Unrated
+        } else {
+            let v = (value * 100.0).round() / 100.0;
+            Rating::Stars(v)
+        }
+    }
+
+    pub fn from_tag(tag: &Tag) -> Self {
+        Self::Unrated
+    }
+}
+
+impl Default for Rating {
+    fn default() -> Self {
+        Rating::Unrated
+    }
+}
+
+impl std::fmt::Display for Rating {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Rating::Stars(v) => write!(f, "★ {:.2}", v),
+            Rating::Unrated => write!(f, "Unrated"),
+        }
+    }
+}
