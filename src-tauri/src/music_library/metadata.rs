@@ -74,6 +74,16 @@ fn get_metadata(track_builder: &mut TrackBuilder, path: &PathBuf) -> Result<()> 
         tag_info.comments = tag.comment().map(Cow::into_owned);
         tag_info.rating = Rating::from_tag(tag);
 
+        let _: Vec<_> = tag
+            .pictures()
+            .iter()
+            .map(|p| Artwork {
+                data: p.data().to_vec(),
+                mime_type: p.mime_type().map(|mt| mt.to_string()).unwrap_or_default(),
+                description: p.description().map(str::to_string).unwrap_or_default(),
+            })
+            .collect();
+
         tag_info.artwork = Some(
             tag.pictures()
                 .iter()

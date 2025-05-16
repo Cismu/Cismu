@@ -1,4 +1,5 @@
 use super::config::LibraryConfig;
+use super::events::{EventCallback, LibraryEvent};
 use super::metadata;
 use super::scanner::DefaultScanner;
 use super::storage::JsonStorage;
@@ -19,11 +20,29 @@ pub struct MusicLibrary<S: Scanner, St: LibraryStorage> {
     storage: St,
     tracks: HashMap<u64, Track>,
     next_id: u64,
+    callbacks: Vec<EventCallback>,
 }
 
 impl<S: Scanner, St: LibraryStorage> MusicLibrary<S, St> {
+    /// Registra un listener
+    pub fn on_event<F>(&mut self, callback: F)
+    where
+        F: FnMut(&LibraryEvent) + Send + 'static,
+    {
+        self.callbacks.push(Box::new(callback));
+    }
+
+    /// Llama a todos los callbacks
+    fn emit(&mut self, event: LibraryEvent) {
+        for cb in &mut self.callbacks {
+            cb(&event);
+        }
+    }
+
     /// Refresca la librería (detecta añadidos, borrados, cambios)
     pub fn refresh_scan(&mut self) -> Result<()> {
+        self.emit(LibraryEvent::ScanStarted);
+
         let current = self.scanner.scan(&self.config);
         let mut path_to_id = HashMap::new();
         let mut cached = HashSet::new();
@@ -51,9 +70,10 @@ impl<S: Scanner, St: LibraryStorage> MusicLibrary<S, St> {
             })
             .collect();
 
-        for tr in new_tracks {
-            let id = tr.id;
-            self.tracks.insert(id, tr);
+        for track in new_tracks {
+            let id = track.id;
+            self.tracks.insert(id, track.clone());
+            self.emit(LibraryEvent::TrackAdded(track));
         }
 
         // Actualizaciones
@@ -76,7 +96,7 @@ impl<S: Scanner, St: LibraryStorage> MusicLibrary<S, St> {
         self.storage.save(&self.tracks)?;
 
         self.next_id = next_atomic.load(Ordering::Relaxed);
-
+        self.emit(LibraryEvent::ScanFinished);
         Ok(())
     }
 
@@ -116,6 +136,7 @@ impl<S: Scanner + Default, St: LibraryStorage + Default> MusicLibraryBuilder<S, 
         self
     }
 
+    #[allow(unused)]
     pub fn scanner<NS: Scanner + 'static + Default>(
         self,
         scanner: NS,
@@ -145,6 +166,7 @@ impl<S: Scanner + Default, St: LibraryStorage + Default> MusicLibraryBuilder<S, 
             storage: self.storage,
             tracks: HashMap::new(),
             next_id: 1,
+            callbacks: Vec::new(),
         };
 
         let map = lib.storage.load()?;

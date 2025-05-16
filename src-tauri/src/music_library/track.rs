@@ -1,11 +1,15 @@
 use std::{
+    borrow::Cow,
     fs,
     path::PathBuf,
     time::{Duration, UNIX_EPOCH},
 };
 
 use derive_builder::Builder;
-use lofty::tag::Tag;
+use lofty::{
+    id3::v2::{Frame, FrameId, Id3v2Tag},
+    tag::{ItemKey, Tag, TagType},
+};
 use serde::{Deserialize, Serialize};
 
 use super::metadata::MIN_FILE_SIZE_BYTES;
@@ -160,8 +164,115 @@ impl Rating {
         }
     }
 
+    pub fn is_unrated(&self) -> bool {
+        matches!(self, Rating::Unrated)
+    }
+
+    pub fn stars(&self) -> Option<f32> {
+        match self {
+            Rating::Stars(v) => Some(*v),
+            Rating::Unrated => None,
+        }
+    }
+
     pub fn from_tag(tag: &Tag) -> Self {
-        Self::Unrated
+        match tag.tag_type() {
+            TagType::Id3v2 => {
+                let id3v2: Id3v2Tag = Id3v2Tag::from(tag.clone());
+
+                if let Some(Frame::Popularimeter(popm)) =
+                    id3v2.get(&FrameId::Valid(Cow::Borrowed("POPM")))
+                {
+                    return Self::from_popm_score(popm.rating);
+                }
+
+                Self::Unrated
+            }
+            _ => {
+                if let Some(item) = tag.get(&ItemKey::Popularimeter) {
+                    let value = item.value();
+
+                    if let Some(bytes) = value.binary() {
+                        if let Some(&raw) = bytes.last() {
+                            if (1..=100).contains(&raw) {
+                                return Self::from_vorbis_str(&raw.to_string());
+                            }
+                        }
+                    } else if let Some(txt) = value.text() {
+                        return Self::from_vorbis_str(txt);
+                    }
+                }
+
+                if let Some(txt) = tag.get_string(&ItemKey::Unknown("RATING".into())) {
+                    return Self::from_vorbis_str(txt);
+                }
+
+                Self::Unrated
+            }
+        }
+    }
+}
+
+// ==============================
+// Vorbis
+// ==============================
+impl Rating {
+    pub fn from_vorbis_str(s: &str) -> Self {
+        match s.trim().parse::<u8>() {
+            Ok(n) if (1..=100).contains(&n) => {
+                let stars = (n as f32 / 20.0 * 100.0).round() / 100.0;
+                Rating::Stars(stars)
+            }
+            _ => Rating::Unrated,
+        }
+    }
+
+    pub fn from_vorbis_score(score: u8) -> Self {
+        Self::from_vorbis_str(&score.to_string())
+    }
+
+    pub fn to_vorbis_score(self) -> u8 {
+        match self {
+            Rating::Stars(v) => (v * 20.0).round().clamp(1.0, 100.0) as u8,
+            Rating::Unrated => 0,
+        }
+    }
+
+    pub fn to_vorbis_string(self) -> String {
+        self.to_vorbis_score().to_string()
+    }
+}
+
+// ==============================
+// ID3v2 / POPM
+// ==============================
+impl Rating {
+    pub fn from_popm_score(score: u8) -> Self {
+        if score == 0 {
+            Rating::Unrated
+        } else {
+            let v = 1.0 + (score as f32 / 255.0 * 4.0);
+            let rounded = (v * 100.0).round() / 100.0;
+            Rating::Stars(rounded)
+        }
+    }
+
+    pub fn from_popm_str(s: &str) -> Self {
+        match s.trim().parse::<u8>() {
+            Ok(byte) => Self::from_popm_score(byte),
+            Err(_) => Rating::Unrated,
+        }
+    }
+
+    pub fn to_popm_score(self) -> u8 {
+        match self {
+            Rating::Stars(v) => ((v - 1.0) / 4.0 * 255.0).round().clamp(0.0, 255.0) as u8,
+            Rating::Unrated => 0,
+        }
+    }
+
+    pub fn to_popm_string(self) -> String {
+        self.to_popm_score().to_string()
     }
 }
 

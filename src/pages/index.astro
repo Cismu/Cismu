@@ -3,18 +3,62 @@ import Layout from "../layouts/Layout.astro";
 ---
 
 <Layout>
-    <button type="button" id="button-send-event">Event</button>
+  <button type="button" id="button-send-event">Event</button>
 </Layout>
 
 <script>
-    type ButtonElement = HTMLButtonElement;
+  import { invoke, Channel } from "@tauri-apps/api/core";
+  import type { Track } from "@/types";
 
-    import { core } from "@tauri-apps/api";
+  type ScanEvent =
+    | { event: "scanStarted"; data: null }
+    | { event: "trackAdded"; data: Track }
+    | { event: "trackRemoved"; data: number }
+    | { event: "trackUpdated"; data: Track }
+    | { event: "scanFinished"; data: null }
+    | { event: "error"; data: { message: string } };
 
-    const btn = document.getElementById("button-send-event") as ButtonElement;
+  async function runScan() {
+    const onEvent = new Channel<ScanEvent>();
+    const tracks = [];
+    let startTime: number;
 
-    btn.addEventListener("click", async (_) => {
-        let res = await core.invoke("greet", { name: "Gabriel Maizo" });
-        console.log(`${res}`);
-    });
+    onEvent.onmessage = ({ event, data }) => {
+      switch (event) {
+        case "scanStarted":
+          startTime = performance.now();
+          console.log("▶ Escaneo iniciado");
+          break;
+
+        case "trackAdded":
+          tracks.push(data);
+          console.log("➕ Pista nueva:", data);
+          break;
+
+        case "trackRemoved":
+          console.log("➖ Pista eliminada ID:", data);
+          break;
+
+        case "trackUpdated":
+          console.log("🔄 Pista actualizada:", data);
+          break;
+
+        case "scanFinished":
+          const elapsedMs = performance.now() - startTime;
+          console.log(`✔️ Escaneo terminado en ${elapsedMs.toFixed(2)} ms, total tracks: ${tracks.length}`);
+          break;
+
+        case "error":
+          console.error("❌ Error:", data.message);
+          break;
+      }
+    };
+
+    // El invoke arranca el canal, luego todo viene por onmessage
+    await invoke("start_scan", { onEvent });
+  }
+
+  document
+    .querySelector("#button-send-event")!
+    .addEventListener("click", runScan);
 </script>

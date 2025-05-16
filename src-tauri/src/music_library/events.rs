@@ -1,17 +1,15 @@
-use anyhow::Error;
-
 use super::track::Track;
 
-/// Eventos que puede emitir la librería
+/// Eventos que emite la librería (datos siempre OWNED para no lidiar con lifetimes)
 #[derive(Debug, Clone)]
-pub enum LibraryEvent<'a> {
+pub enum LibraryEvent {
     ScanStarted,
     TrackAdded(Track),
     TrackRemoved(u64),
-    TrackUpdated(&'a Track),
+    TrackUpdated(Track),
     ScanFinished,
     Error(String),
 }
 
-/// Tipo de callback para manejar eventos
-pub type EventCallback<'a> = Box<dyn FnMut(LibraryEvent<'a>) + Send + 'a>;
+/// Firma de un callback: recibe el evento
+pub type EventCallback = Box<dyn FnMut(&LibraryEvent) + Send + 'static>;

@@ -1,12 +1,12 @@
 mod analysis;
 pub mod config;
 mod error;
-mod events;
+pub mod events;
 pub mod library;
 mod metadata;
 mod scanner;
 pub mod storage;
-mod track;
+pub mod track;
 mod traits;
 mod utils;
 
