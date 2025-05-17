@@ -45,7 +45,9 @@ import Layout from "../layouts/Layout.astro";
 
         case "scanFinished":
           const elapsedMs = performance.now() - startTime;
-          console.log(`✔️ Escaneo terminado en ${elapsedMs.toFixed(2)} ms, total tracks: ${tracks.length}`);
+          console.log(
+            `✔️ Escaneo terminado en ${elapsedMs.toFixed(2)} ms, total tracks: ${tracks.length}`,
+          );
           break;
 
         case "error":

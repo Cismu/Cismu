@@ -26,7 +26,7 @@ enum ScanEvent {
 }
 
 #[tauri::command]
-fn start_scan(on_event: Channel<ScanEvent>) {
+async fn start_scan(on_event: Channel<ScanEvent>) {
     // clonamos el canal para enviarlo desde el hilo de escaneo
     let ch = on_event.clone();
 
@@ -39,7 +39,7 @@ fn start_scan(on_event: Channel<ScanEvent>) {
         // --- setup de la librería ---
         let config = LibraryConfigBuilder::default()
             .database_path("..\\default.db")
-            .scan_directories(vec!["C:\\Users\\maizo\\Videos".into()])
+            .scan_directories(vec!["C:\\".into(), "E:\\".into(), "D:\\".into()])
             .build()
             .unwrap();
 

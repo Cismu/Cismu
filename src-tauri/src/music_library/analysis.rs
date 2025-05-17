@@ -90,7 +90,7 @@ pub fn get_analysis(path: &PathBuf, sample_rate: u32, channels: u8) -> Result<Au
     let mut samples_for_fft: Vec<f32> = Vec::with_capacity(FFT_WINDOW_SIZE);
     let mut spectrum_db_accumulator: Vec<f32> = vec![0.0; FFT_WINDOW_SIZE / 2];
     let mut window_count: usize = 0;
-    let mut processed_duration_seconds: f32 = 0.0;
+    let mut elapsed_secs = 0.0_f32;
 
     loop {
         let packet = match format_reader.next_packet() {
@@ -107,20 +107,27 @@ pub fn get_analysis(path: &PathBuf, sample_rate: u32, channels: u8) -> Result<Au
 
         match decoder.decode(&packet) {
             Ok(audio_buffer) => {
-                if MAX_ANALYSIS_DURATION_SECONDS > 0.0 {
-                    let frames_in_buffer = audio_buffer.frames() as u64;
-                    if sample_rate > 0 {
-                        let buffer_duration_seconds = frames_in_buffer as f32 / sample_rate as f32;
-                        processed_duration_seconds += buffer_duration_seconds;
-
-                        if processed_duration_seconds >= MAX_ANALYSIS_DURATION_SECONDS {
-                            break;
-                        }
+                let frames = audio_buffer.frames() as u64;
+                if MAX_ANALYSIS_DURATION_SECONDS > 0.0 && sample_rate > 0 {
+                    let dur = frames as f32 / sample_rate as f32;
+                    elapsed_secs += dur;
+                    if elapsed_secs >= MAX_ANALYSIS_DURATION_SECONDS {
+                        break;
                     }
                 }
 
                 let spec = *audio_buffer.spec();
-                let mut sample_buf = SampleBuffer::<f32>::new(audio_buffer.frames() as u64, spec);
+                let frames_usize = frames as usize;
+                let chans = spec.channels.count();
+                if frames_usize == 0 || chans == 0 {
+                    continue;
+                }
+
+                let total_samples = frames_usize
+                    .checked_mul(chans)
+                    .ok_or_else(|| AnalysisError::BufferSizeOverflow(frames_usize, chans))?;
+                let mut sample_buf = SampleBuffer::<f32>::new(total_samples as u64, spec);
+
                 sample_buf.copy_interleaved_ref(audio_buffer);
                 let samples_interleaved = sample_buf.samples();
 

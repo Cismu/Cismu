@@ -49,4 +49,7 @@ pub enum AnalysisError {
 
     #[error("Unrecoverable decoder error")]
     DecoderError(#[source] SymphoniaError),
+
+    #[error("Buffer size overflow: {0} * {1} exceeds usize max")]
+    BufferSizeOverflow(usize, usize),
 }

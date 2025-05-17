@@ -7,13 +7,10 @@ pub enum AudioFormat {
     Mp3,
     Aac,
     OggVorbis,
-    Opus,
     Flac,
     Wav,
     Aiff,
-    Ape,
     Wv,
-    Mpc,
 }
 
 impl AudioFormat {
@@ -21,9 +18,7 @@ impl AudioFormat {
         match extension.to_str()?.to_lowercase().as_str() {
             "mp3" => Some(AudioFormat::Mp3),
             "aac" => Some(AudioFormat::Aac),
-            "m4a" | "m4b" => Some(AudioFormat::Aac),
             "ogg" => Some(AudioFormat::OggVorbis),
-            "opus" => Some(AudioFormat::Opus),
             "flac" => Some(AudioFormat::Flac),
             "wav" => Some(AudioFormat::Wav),
             "aiff" | "aif" => Some(AudioFormat::Aiff),

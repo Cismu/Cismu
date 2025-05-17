@@ -1,4 +1,9 @@
-use std::{borrow::Cow, path::PathBuf, time::Duration};
+use std::{
+    borrow::Cow,
+    panic::{self, AssertUnwindSafe},
+    path::PathBuf,
+    time::Duration,
+};
 
 use anyhow::Result;
 use lofty::{
@@ -11,7 +16,7 @@ use crate::music_library::error::MetadataError;
 
 use super::{
     analysis::get_analysis,
-    track::{Artwork, AudioInfo, FileInfo, Rating, TagInfo, Track, TrackBuilder},
+    track::{Artwork, AudioAnalysis, AudioInfo, FileInfo, Rating, TagInfo, Track, TrackBuilder},
 };
 
 pub const MIN_FILE_SIZE_BYTES: u64 = 1024;
@@ -44,7 +49,15 @@ fn get_metadata(track_builder: &mut TrackBuilder, path: &PathBuf) -> Result<()> 
     audio_info.channels = properties.channels();
 
     if let (Some(sr), Some(ch)) = (audio_info.sample_rate_hz, audio_info.channels) {
-        audio_info.analysis = get_analysis(path, sr, ch).ok();
+        let maybe_res: Option<AudioAnalysis> =
+            panic::catch_unwind(AssertUnwindSafe(|| get_analysis(path, sr, ch)))
+                .ok()
+                .and_then(|res| res.ok());
+
+        if maybe_res.is_none() {
+            eprintln!("⚠️  Falló get_analysis en {:?}", path);
+        }
+        audio_info.analysis = maybe_res;
     }
 
     let tag = tagged_file
