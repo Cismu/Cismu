@@ -1,14 +1,21 @@
 {
-  "name": "cismu-web",
+  "name": "cismu",
+  "private": true,
+  "version": "0.1.0",
   "type": "module",
-  "version": "0.0.1",
   "scripts": {
     "dev": "astro dev",
     "build": "astro build",
     "preview": "astro preview",
-    "astro": "astro"
+    "astro": "astro",
+    "tauri": "tauri"
   },
   "dependencies": {
+    "@tauri-apps/api": "^2",
+    "@tauri-apps/plugin-opener": "^2"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2",
     "astro": "^5.10.0"
   }
 }
