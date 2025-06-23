@@ -1,0 +1,42 @@
+include_paths = []
+exclude_paths = []
+follow_symlinks = true
+cover_art_dir = "cover_art"
+fingerprint_algorithm = "chromaprint"
+scan_threads = 8
+
+[database]
+type = "Sqlite"
+path = "library.db"
+
+[extension_config.wav]
+min_file_size = "5.0 MiB"
+min_duration = "30s"
+
+[extension_config.m4a]
+min_file_size = "1.0 MiB"
+min_duration = "30s"
+
+[extension_config.aac]
+min_file_size = "500.0 KiB"
+min_duration = "30s"
+
+[extension_config.ogg]
+min_file_size = "500.0 KiB"
+min_duration = "30s"
+
+[extension_config.mp4]
+min_file_size = "1.0 MiB"
+min_duration = "30s"
+
+[extension_config.opus]
+min_file_size = "500.0 KiB"
+min_duration = "30s"
+
+[extension_config.mp3]
+min_file_size = "500.0 KiB"
+min_duration = "30s"
+
+[extension_config.flac]
+min_file_size = "2.0 MiB"
+min_duration = "30s"
