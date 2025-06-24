@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
 /// Restricciones por tipo de archivo
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ExtensionConfig {
     pub min_file_size: ByteSize,
     #[serde(with = "humantime_serde")]
@@ -46,6 +46,21 @@ impl ExtensionConfig {
         min_file_size: ByteSize::mib(2),
         min_duration: Self::COMMON_MIN_DURATION,
     };
+}
+
+impl ExtensionConfig {
+    /// Valida que min_file_size y min_duration sean mayores que cero.
+    pub fn validate(&self) -> Result<(), String> {
+        // ByteSize::as_u64 devuelve número de bytes
+        if self.min_file_size.as_u64() == 0 {
+            return Err("min_file_size must be greater than zero".into());
+        }
+        // Duration::as_secs devuelve segundos completos
+        if self.min_duration.as_secs() == 0 {
+            return Err("min_duration must be greater than zero".into());
+        }
+        Ok(())
+    }
 }
 
 /// Extensiones soportadas

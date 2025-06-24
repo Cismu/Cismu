@@ -14,4 +14,7 @@ pub enum ConfigError {
 
     #[error("Notify watcher error: {0}")]
     Notify(#[from] NotifyError),
+
+    #[error("Invalid configuration: {0}")]
+    Validation(String),
 }

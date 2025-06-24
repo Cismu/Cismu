@@ -8,10 +8,10 @@ pub use errors::Error;
 pub use paths::CismuPaths;
 
 use once_cell::sync::Lazy;
+pub use directories::UserDirs;
 
 /// Singleton global, para usar en todo el crate sin repetir `new()`
-pub static PATHS: Lazy<CismuPaths> =
-    Lazy::new(|| CismuPaths::new().expect("Failed to initialize CismuPaths"));
+pub static PATHS: Lazy<CismuPaths> = Lazy::new(|| CismuPaths::new().expect("Failed to initialize CismuPaths"));
 
 #[cfg(test)]
 mod tests {
