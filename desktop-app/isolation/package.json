@@ -4,8 +4,8 @@
   "version": "0.0.1",
   "type": "module",
   "scripts": {
-    "build": "tsc && vite build --emptyOutDir --outDir ../dist-isolation",
-    "build:watch": "tsc && vite build --emptyOutDir --watch --outDir ../dist-isolation"
+    "build": "tsc && vite build --emptyOutDir --outDir ../../dist-isolation",
+    "build:watch": "tsc && vite build --emptyOutDir --watch --outDir ../../dist-isolation"
   },
   "devDependencies": {
     "typescript": "~5.8.3",

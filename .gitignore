@@ -69,3 +69,4 @@ target
 # will have schema files for capabilities auto-completion
 /gen/schemas
 /tmp
+/dist-isolation
