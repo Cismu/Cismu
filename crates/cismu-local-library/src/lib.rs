@@ -1,24 +1,7 @@
-pub mod error;
+pub mod config_manager;
 pub mod extensions;
-pub mod library_config;
-pub mod manager;
-
-pub use manager::{ConfigEvent, ConfigManager};
-
-pub struct LocalLibrary {
-    pub config: ConfigManager,
-}
-
-impl LocalLibrary {
-    pub fn new(config: ConfigManager) -> Self {
-        LocalLibrary { config }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn it_works() {}
-}
+pub mod fingerprint;
+pub mod metadata;
+pub mod scanner;
+pub mod storage;
+pub mod traits;

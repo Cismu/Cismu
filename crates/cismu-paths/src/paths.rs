@@ -41,7 +41,7 @@ impl CismuPaths {
             let b = PathBuf::from(base);
             (b.join("config"), b.join("data"), b.join("cache"))
         } else {
-            let proj = ProjectDirs::from("com", "MyOrg", "Cismu").ok_or(Error::NoHome)?;
+            let proj = ProjectDirs::from("org", "Cismu", "Cismu").ok_or(Error::NoHome)?;
             (
                 proj.config_dir().to_path_buf(),
                 proj.data_dir().to_path_buf(),

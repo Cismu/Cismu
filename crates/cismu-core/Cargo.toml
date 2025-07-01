@@ -4,3 +4,5 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+cismu-local-library = { version = "0.1.0", path = "../cismu-local-library" }
+tokio = { version = "1.45.1", features = ["sync"] }

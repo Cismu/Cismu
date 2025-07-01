@@ -8,7 +8,12 @@
     "build": "astro build",
     "preview": "astro preview",
     "astro": "astro",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "isolation:build": "pnpm --filter isolation run build",
+    "isolation:build:watch": "pnpm --filter isolation run build:watch",
+    "docs:dev": "vitepress dev docs",
+    "docs:build": "vitepress build docs",
+    "docs:preview": "vitepress preview docs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
@@ -18,6 +23,7 @@
   "devDependencies": {
     "@tauri-apps/cli": "^2",
     "astro": "^5.10.0",
-    "vite-tsconfig-paths": "^5.1.4"
+    "vite-tsconfig-paths": "^5.1.4",
+    "vitepress": "^1.6.3"
   }
 }

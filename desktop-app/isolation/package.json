@@ -1,0 +1,17 @@
+{
+  "name": "isolation",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "build": "tsc && vite build --emptyOutDir --outDir ../dist-isolation",
+    "build:watch": "tsc && vite build --emptyOutDir --watch --outDir ../dist-isolation"
+  },
+  "devDependencies": {
+    "typescript": "~5.8.3",
+    "vite": "^7.0.0"
+  },
+  "dependencies": {
+    "vite-plugin-singlefile": "^2.2.0"
+  }
+}
