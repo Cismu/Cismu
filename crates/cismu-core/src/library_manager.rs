@@ -1,5 +1,3 @@
-use std::time::Instant;
-
 use tokio::runtime::Handle;
 
 use cismu_local_library::{
@@ -28,6 +26,14 @@ impl LibraryManager<LocalScanner, LocalMetadata, LocalStorage> {
         let metadata = LocalMetadata::new(config.metadata);
         let storage = LocalStorage::new(config.storage);
 
+        let m = handle.metrics();
+        dbg!(m.num_workers());
+        dbg!(m.global_queue_depth());
+        dbg!(m.num_alive_tasks());
+        dbg!(m.num_workers());
+        dbg!(handle.runtime_flavor());
+        dbg!(m);
+
         LibraryManager {
             scanner,
             metadata,
@@ -36,27 +42,3 @@ impl LibraryManager<LocalScanner, LocalMetadata, LocalStorage> {
         }
     }
 }
-
-// let start_scan = Instant::now();
-// let scanner_results = scanner.scan().unwrap();
-// eprintln!("📦 Scan completed in {:?}", start_scan.elapsed());
-
-// let start_conc = Instant::now();
-
-// // let tracks = tokio::runtime::Runtime::new()
-// //     .unwrap()
-// //     .block_on(async {
-// //         let results = metadata.process(scanner_results).await;
-// //         results
-// //     })
-// //     .unwrap();
-
-// eprintln!(
-//     "🚀 Concurrent metadata processing completed in {:?}",
-//     start_conc.elapsed()
-// );
-
-// println!("📦 {} tracks processed", tracks.len());
-// for track in tracks.iter().take(3) {
-//     println!("{:#?}", track);
-// }

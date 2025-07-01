@@ -1,23 +1,10 @@
-use std::sync::Mutex;
-
-use cismu_core::LibraryManager;
-use tauri::{Manager, State};
-
-#[derive(Default)]
-struct AppState {
-    counter: u32,
-}
+use cismu_core::{ConfigManager, LibraryManager};
+use tauri::async_runtime::handle;
+use tauri::Manager;
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
-fn greet(state: State<'_, Mutex<AppState>>, name: &str) -> String {
-    let mut state = state.lock().unwrap();
-
-    // Modify the state:
-    state.counter += 1;
-
-    println!("{}", state.counter);
-
+fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
 }
 
@@ -35,7 +22,14 @@ pub fn run() {
 
     builder
         .setup(|app| {
-            app.manage(Mutex::new(AppState::default()));
+            let handle = handle();
+            let handle = handle.inner().clone();
+
+            let config = ConfigManager::new();
+            let library = LibraryManager::new(handle, config);
+
+            app.manage(library);
+
             Ok(())
         })
         .plugin(tauri_plugin_opener::init())
