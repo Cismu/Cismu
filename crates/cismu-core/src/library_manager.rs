@@ -1,12 +1,12 @@
 use tokio::runtime::Handle;
+use tracing::{Level, instrument};
 
 use cismu_local_library::{
     config_manager::ConfigManager,
-    metadata::LocalMetadata,
-    scanner::LocalScanner,
-    storage::LocalStorage,
     traits::{MetadataProcessor, Scanner, Storage},
 };
+
+pub use cismu_local_library::{metadata::LocalMetadata, scanner::LocalScanner, storage::LocalStorage};
 
 pub struct LibraryManager<S, M, St>
 where
@@ -21,18 +21,13 @@ where
 }
 
 impl LibraryManager<LocalScanner, LocalMetadata, LocalStorage> {
+    #[instrument(skip_all, level = Level::DEBUG)]
     pub fn new(handle: Handle, config: ConfigManager) -> Self {
         let scanner = LocalScanner::new(config.scanner);
         let metadata = LocalMetadata::new(config.metadata);
         let storage = LocalStorage::new(config.storage);
 
-        let m = handle.metrics();
-        dbg!(m.num_workers());
-        dbg!(m.global_queue_depth());
-        dbg!(m.num_alive_tasks());
-        dbg!(m.num_workers());
-        dbg!(handle.runtime_flavor());
-        dbg!(m);
+        let _ = scanner.scan();
 
         LibraryManager {
             scanner,

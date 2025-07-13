@@ -1,21 +1,22 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::ffi::OsStr;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
-use std::{collections::HashMap, path::PathBuf};
 
 use anyhow::Result;
 use cismu_paths::UserDirs;
-use jwalk::WalkDir;
+use jwalk::{DirEntry, WalkDir};
 use rayon::ThreadPoolBuilder;
 use rayon::iter::{ParallelBridge, ParallelIterator};
 use serde::{Deserialize, Serialize};
-use sugar_path::SugarPath;
+use tracing::{Level, debug, debug_span, info, trace, warn};
+use tracing::{info_span, instrument};
 
 use crate::extensions::{ExtensionConfig, SupportedExtension};
 use crate::traits::Scanner;
 
+// ------------- Tipos auxiliares -------------------------------------------
 #[derive(Debug, Clone)]
 pub struct TrackFile {
     pub path: PathBuf,
@@ -23,124 +24,175 @@ pub struct TrackFile {
     pub file_size: u64,
     pub last_modified: u64,
 }
-
 pub type ScanResult = HashMap<String, Vec<TrackFile>>;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct FileId(u64, u64);
+
+#[cfg(unix)]
+fn file_id(path: &Path) -> Option<FileId> {
+    use std::os::unix::fs::MetadataExt;
+    Some(FileId(
+        std::fs::metadata(path).ok()?.dev(),
+        std::fs::metadata(path).ok()?.ino(),
+    ))
+}
+#[cfg(windows)]
+fn file_id(path: &Path) -> Option<FileId> {
+    use std::os::windows::fs::MetadataExt;
+    Some(FileId(
+        std::fs::metadata(path).ok()?.volume_serial_number(),
+        std::fs::metadata(path).ok()?.file_index(),
+    ))
+}
+
+fn mark_seen(id: FileId, seen: &Mutex<HashSet<FileId>>) -> bool {
+    let mut g = seen.lock().unwrap();
+    !g.insert(id) // true ⇒ YA visto
+}
+
+// ------------- LocalScanner -----------------------------------------------
 pub struct LocalScanner {
-    config: LocalScannerConfig,
+    pub config: LocalScannerConfig,
 }
 
 impl LocalScanner {
     pub fn new(config: LocalScannerConfig) -> Self {
-        LocalScanner { config }
+        Self { config }
     }
 
-    fn should_process_file(&self, dir_entry: &jwalk::DirEntry<((), ())>) -> Option<TrackFile> {
-        if dir_entry.file_type().is_dir() {
+    #[instrument(level = Level::DEBUG, skip_all, fields(path = %de.path().display()))]
+    fn should_process_file(&self, de: DirEntry<((), ())>) -> Option<TrackFile> {
+        if de.file_type().is_dir() {
+            trace!(path = %de.path().display(), "Skipping directory");
             return None;
         }
 
-        let path = dir_entry.path();
-
-        let ext_str = match path.extension().and_then(OsStr::to_str) {
+        let path = de.path();
+        let ext = match path.extension().and_then(OsStr::to_str) {
             Some(e) => e.to_ascii_lowercase(),
-            None => return None,
+            None => {
+                trace!(path = %de.path().display(), "Skipping: no extension");
+                return None;
+            }
         };
-
-        let variant = SupportedExtension::from_str(&ext_str).ok()?;
+        let variant = SupportedExtension::from_str(&ext).ok()?;
         let ext_cfg = self.config.extensions.get(&variant).unwrap_or(&variant.config());
 
-        let metadata = std::fs::metadata(&path).ok()?;
-        if metadata.len() < ext_cfg.min_file_size.as_u64() {
+        let md = std::fs::metadata(&path).ok()?;
+        if md.len() < ext_cfg.min_file_size.as_u64() {
+            trace!(path = %de.path().display(), "Skipping: file too small");
             return None;
         }
-
-        let last_modified = metadata.modified().ok()?;
-        let last_modified = last_modified
-            .duration_since(std::time::SystemTime::UNIX_EPOCH)
+        let mtime = md
+            .modified()
+            .ok()?
+            .duration_since(std::time::UNIX_EPOCH)
             .ok()?
             .as_secs();
 
         Some(TrackFile {
-            path: path.clone(),
+            path,
             extension: variant,
-            file_size: metadata.len(),
-            last_modified,
+            file_size: md.len(),
+            last_modified: mtime,
         })
     }
 
+    #[tracing::instrument(parent = None, skip_all, level = Level::DEBUG)]
     pub fn scan(&self) -> Result<ScanResult> {
-        let seen = Arc::new(Mutex::new(HashSet::new()));
+        let seen = Arc::new(Mutex::new(HashSet::<FileId>::new()));
         let included = normalize_paths(self.config.include.clone());
         let excluded = Arc::new(normalize_paths(self.config.exclude.clone()));
-
-        let follow_symlinks = self.config.follow_symlinks;
-
+        let follow = self.config.follow_symlinks;
         let mut groups: ScanResult = HashMap::new();
+
+        info!(?included, ?self.config.exclude, threads=self.config.threads, "Starting local scan");
 
         let pool = ThreadPoolBuilder::new()
             .num_threads(self.config.threads)
             .build()?;
 
+        let scan_span = info_span!("scan_pool");
         pool.install(|| {
+            let _guard = scan_span.enter();
+
+            info!("Beginning to iterate over included roots");
+
             for root in included {
-                if excluded.iter().any(|e| root.starts_with(e)) {
-                    continue;
-                }
+                let root_span = info_span!("scan_root", root=%root.display());
+                let _root_guard = root_span.enter();
 
-                let walker = WalkDir::new(root.clone())
-                    .follow_links(follow_symlinks)
-                    .process_read_dir({
-                        let seen = seen.clone();
-                        let excluded = excluded.clone();
+                info!("Scanning root directory");
 
-                        move |_depth, path, _state, children| {
-                            if excluded.iter().any(|e| path.starts_with(e)) {
-                                children.clear();
-                                return;
-                            }
+                //     let root_span = info_span!("scan_root", root=%root.display());
+                //     if excluded.iter().any(|e| root.starts_with(e)) {
+                //         debug!(root=%root.display(), "Root excluded (pre-check)");
+                //         continue;
+                //     }
 
-                            children.retain(|entry_res| {
-                                let de = match entry_res {
-                                    Ok(d) => d,
-                                    Err(_) => return false,
-                                };
+                //     // --- 3. span por root --------------------------------------
+                //     let _rsg = root_span.enter();
+                //     info!("Scanning root directory");
 
-                                if !follow_symlinks && de.file_type().is_symlink() {
-                                    return false;
-                                }
+                //     // Capture para closures
+                //     let excluded_p = excluded.clone();
+                //     let seen_p = seen.clone();
+                //     let root_span_p = root_span.clone();
 
-                                let p: PathBuf = de.path();
-                                let id = match file_id(&p) {
-                                    Some(id) => id,
-                                    None => return false,
-                                };
+                //     let walker_iter = WalkDir::new(root.clone()).follow_links(follow).process_read_dir(
+                //         move |_d, path, _state, children| {
+                //             let e = info_span!(parent: &root_span_p, "walker");
+                //             let _e = e.enter();
 
-                                !mark_seen(id, &seen)
-                            });
-                        }
-                    });
+                //             // prune excluidos
+                //             if excluded_p.iter().any(|e| path.starts_with(e)) {
+                //                 trace!(dir=%path.display(), "Prune: excluded");
+                //                 children.clear();
+                //                 return;
+                //             }
+                //             // prune ya vistos
+                //             if let Some(id) = file_id(path) {
+                //                 if mark_seen(id, &*seen_p) {
+                //                     trace!(dir=%path.display(), "Prune: already visited");
+                //                     children.clear();
+                //                 }
+                //             }
+                //         },
+                //     );
 
-                let collected: Vec<_> = walker
-                    .into_iter()
-                    .par_bridge()
-                    .filter_map(|res| res.ok())
-                    .filter_map(|de| self.should_process_file(&de))
-                    .collect();
+                //     let walker = match walker_iter.try_into_iter() {
+                //         Ok(w) => w,
+                //         Err(e) => {
+                //             warn!(error=?e, root=%root.display(), "Failed to init WalkDir");
+                //             continue;
+                //         }
+                //     };
 
-                for track in collected {
-                    let key = group_key(&track);
-                    groups.entry(key).or_default().push(track);
-                }
+                //     let files: Vec<_> = walker
+                //         .filter_map(|r| r.ok())
+                //         .par_bridge()
+                //         .filter_map(|de| root_span.in_scope(|| self.should_process_file(de)))
+                //         .collect();
+
+                //     debug!(root=%root.display(), files=files.len(), "Files collected in this root");
+
+                //     for f in files {
+                //         groups.entry(group_key(&f)).or_default().push(f);
+                //     }
             }
+
+            info!("Finished scanning all roots");
         });
 
+        debug!(groups_total = groups.len(), "Scan complete");
         Ok(groups)
     }
 }
 
 impl Scanner for LocalScanner {}
 
+// ------------- Helpers -----------------------------------------------------
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct LocalScannerConfig {
     pub include: Vec<PathBuf>,
@@ -156,9 +208,9 @@ impl Default for LocalScannerConfig {
             .and_then(|ud| ud.audio_dir().map(|p| p.to_path_buf()))
             .unwrap_or_else(|| std::env::current_dir().unwrap());
 
-        LocalScannerConfig {
-            include: vec![include_dir],
-            exclude: Vec::new(),
+        Self {
+            include: vec!["/home/undead34/Music/Soulsheek/ALL OUT/".into()],
+            exclude: vec![],
             follow_symlinks: true,
             threads: num_cpus::get(),
             extensions: HashMap::new(),
@@ -166,82 +218,29 @@ impl Default for LocalScannerConfig {
     }
 }
 
-pub fn normalize_paths(paths: Vec<PathBuf>) -> Vec<PathBuf> {
-    paths.into_iter().filter_map(normalize_path).collect()
-}
-
-pub fn normalize_path(p: PathBuf) -> Option<PathBuf> {
-    let abs = p.absolutize();
-
-    #[cfg(target_os = "windows")]
-    let canon_res = dunce::canonicalize(&abs);
-
-    #[cfg(not(target_os = "windows"))]
-    let canon_res = std::fs::canonicalize(&abs);
-
-    canon_res.ok()
+fn normalize_paths(p: Vec<PathBuf>) -> Vec<PathBuf> {
+    p.into_iter()
+        .filter_map(|pb| dunce::canonicalize(&pb).ok())
+        .collect()
 }
 
 fn group_key(track: &TrackFile) -> String {
     #[cfg(unix)]
     {
-        get_unix_dev(&track.path)
-    }
-    #[cfg(windows)]
-    {
-        get_windows_group(&track.path)
-    }
-}
-
-#[cfg(unix)]
-fn get_unix_dev(p: &PathBuf) -> String {
-    use std::os::unix::fs::MetadataExt;
-
-    match std::fs::metadata(p) {
-        Ok(md) => md.dev().to_string(),
-        Err(_) => "DEV_UNKNOWN".to_string(),
-    }
-}
-
-#[cfg(windows)]
-fn get_windows_group(p: &PathBuf) -> String {
-    todo!("To be tested in Windows");
-    use std::path::Component;
-    use std::path::Prefix::*;
-
-    match p.components().next() {
-        Some(Component::Prefix(prefix_comp)) => match prefix_comp.kind() {
-            Disk(letter) | VerbatimDisk(letter) => format!("{}:", (letter as char)),
-            UNC(_, _) | VerbatimUNC(_, _) => "UNC_OTHER".to_string(),
-            _ => "OTHER_PREFIX".to_string(),
-        },
-        _ => "NO_DRIVE".to_string(),
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct FileId(u64, u64);
-
-/// Convierte una ruta a un identificador único del sistema de archivos.
-/// Sigue enlaces porque usa `fs::metadata`.
-fn file_id(path: &Path) -> Option<FileId> {
-    let md = std::fs::metadata(path).ok()?;
-
-    #[cfg(unix)]
-    {
         use std::os::unix::fs::MetadataExt;
-        Some(FileId(md.dev(), md.ino()))
+        std::fs::metadata(&track.path)
+            .map(|m| m.dev().to_string())
+            .unwrap_or_default()
     }
     #[cfg(windows)]
     {
-        use std::os::windows::fs::MetadataExt;
-        Some(FileId(md.volume_serial_number(), md.file_index()))
+        use std::path::Component::*;
+        match track.path.components().next() {
+            Some(Prefix(prefix)) => match prefix.kind() {
+                Prefix::Disk(letter) | Prefix::VerbatimDisk(letter) => format!("{}:", letter as char),
+                _ => "OTHER_DRIVE".into(),
+            },
+            _ => "NO_DRIVE".into(),
+        }
     }
-}
-
-/// TRUE  -> ya visto
-/// FALSE -> primera vez
-fn mark_seen(id: FileId, seen: &Mutex<HashSet<FileId>>) -> bool {
-    let mut guard = seen.lock().unwrap();
-    !guard.insert(id) // insert devuelve false si ya existía
 }

@@ -1,47 +1,49 @@
+use core::error;
 use std::{env, fs::File, path::PathBuf};
+
+use crate::{errors::Error, fs_utils};
+use tracing::{Level, debug, error, info, instrument, span};
 
 use directories::ProjectDirs;
 
-use crate::{errors::Error, fs_utils};
-
-/// Nombre de la ENV var para override de ruta base (modo “portable”)
+/// Name of the ENV var for base route override (“portable” mode)
 const ENV_BASE_DIR: &str = "CISMU_BASE_DIR";
 
-/// Contenedor de todas las rutas y ficheros importantes de la app
+/// Container of all important paths and files of the app
 #[derive(Debug)]
 pub struct CismuPaths {
-    // config_dir
+    // Directories
     pub config_dir: PathBuf,
-    pub settings_file: PathBuf,
-    pub ui_file: PathBuf,
-    pub keybindings_file: PathBuf,
-
-    // data_dir
     pub data_dir: PathBuf,
-    pub library_db: PathBuf,
-    pub playlists_db: PathBuf,
     pub state_dir: PathBuf,
     pub logs_dir: PathBuf,
-    pub log_file: PathBuf,
-
-    // cache_dir
     pub cache_dir: PathBuf,
     pub covers_dir: PathBuf,
     pub waveforms_dir: PathBuf,
     pub lyrics_dir: PathBuf,
 
-    // lock_file
+    // Files
+    pub settings_file: PathBuf,
+    pub ui_file: PathBuf,
+    pub keybindings_file: PathBuf,
+    pub log_file: PathBuf,
     pub lock_file: PathBuf,
+
+    // Databases
+    pub library_db: PathBuf,
+    pub playlists_db: PathBuf,
 }
 
 impl CismuPaths {
+    #[instrument(skip_all, level = Level::DEBUG)]
     pub fn new() -> Result<Self, Error> {
-        // 1) Calculamos config_dir, data_dir, cache_dir (igual que antes)
         let (config_dir, data_dir, cache_dir) = if let Ok(base) = env::var(ENV_BASE_DIR) {
+            info!("Using portable mode");
             let b = PathBuf::from(base);
             (b.join("config"), b.join("data"), b.join("cache"))
         } else {
             let proj = ProjectDirs::from("org", "Cismu", "Cismu").ok_or(Error::NoHome)?;
+            info!("Using default mode");
             (
                 proj.config_dir().to_path_buf(),
                 proj.data_dir().to_path_buf(),
@@ -49,7 +51,6 @@ impl CismuPaths {
             )
         };
 
-        // 2) Inicializamos todas las rutas en la estructura (sin crear nada aún)
         let paths = CismuPaths {
             config_dir: config_dir.clone(),
             settings_file: config_dir.join("settings.toml"),
@@ -71,7 +72,6 @@ impl CismuPaths {
             lock_file: data_dir.join("cismu.lock"),
         };
 
-        // 3) Creamos toda la estructura de dirs y ficheros y verificamos que todo está presente y escribible
         paths.ensure_structure()?;
         paths.validate_structure()?;
 
@@ -95,11 +95,13 @@ impl CismuPaths {
     ///
     /// Estructura:
     ///   <cache_dir>/covers/<1º nibble>/<2 primeros nibbles>/<hash>.<ext>
+    #[instrument(skip_all, level = Level::DEBUG)]
     pub fn cover_path(&self, hash: &str, ext: &str) -> Result<PathBuf, Error> {
         let hex = hash.to_lowercase();
 
         // 1) Validaciones
         if hex.len() < 2 || !hex.chars().all(|c| c.is_ascii_hexdigit()) {
+            error!("Invalid cover hash: {}", hash);
             return Err(Error::InvalidCoverHash(hash.to_string()));
         }
 
@@ -108,11 +110,11 @@ impl CismuPaths {
         let d2 = &hex[0..2];
 
         // 3) Formamos el PathBuf
-        Ok(self.covers_dir.join(d1).join(d2).join(format!(
-            "{}.{}",
-            hex,
-            ext.trim_start_matches('.')
-        )))
+        Ok(self
+            .covers_dir
+            .join(d1)
+            .join(d2)
+            .join(format!("{}.{}", hex, ext.trim_start_matches('.'))))
     }
 
     /// Asegura que la carpeta del cover existe y devuelve la ruta completa lista para escribir.
@@ -127,6 +129,7 @@ impl CismuPaths {
 
 impl CismuPaths {
     /// Se asegura de que TODOS los dirs y ficheros básicos existen.
+    #[instrument(skip_all, level = Level::DEBUG)]
     pub fn ensure_structure(&self) -> Result<(), Error> {
         // carpetas
         fs_utils::ensure_dir(&self.config_dir)?;
@@ -151,6 +154,7 @@ impl CismuPaths {
 
     /// Valida que cada ruta existe Y es escribible. Si falta, la intenta crear.
     /// Si no tiene permisos de escritura, retorna Err.
+    #[instrument(skip_all, level = Level::DEBUG)]
     pub fn validate_structure(&self) -> Result<(), Error> {
         let all_paths = vec![
             &self.config_dir,

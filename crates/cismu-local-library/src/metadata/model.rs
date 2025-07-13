@@ -112,9 +112,7 @@ impl Rating {
 
     fn from_vorbis_str(s: &str) -> Self {
         match s.trim().parse::<u8>() {
-            Ok(n) if (1..=100).contains(&n) => {
-                Rating::Stars((n as f32 / 20.0 * 100.0).round() / 100.0)
-            }
+            Ok(n) if (1..=100).contains(&n) => Rating::Stars((n as f32 / 20.0 * 100.0).round() / 100.0),
             _ => Rating::Unrated,
         }
     }
