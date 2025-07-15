@@ -19,7 +19,7 @@ fn init_library() -> Result<LibraryManager> {
     Ok(library)
 }
 
-#[instrument(name = "setup_app", level = Level::INFO, err, skip(app))]
+#[instrument(parent = None, name = "setup_app", level = Level::INFO, err, skip(app))]
 fn setup(app: &mut tauri::App) -> Result<()> {
     info!("🚀 Initializing Cismu…");
 

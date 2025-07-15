@@ -35,7 +35,7 @@ pub struct CismuPaths {
 }
 
 impl CismuPaths {
-    #[instrument(skip_all, level = Level::DEBUG)]
+    #[instrument(name = "CismuPaths::new", level = Level::INFO, err, skip_all, fields(mode = %env::var(ENV_BASE_DIR).map(|_| "portable").unwrap_or("default")))]
     pub fn new() -> Result<Self, Error> {
         let (config_dir, data_dir, cache_dir) = if let Ok(base) = env::var(ENV_BASE_DIR) {
             info!("Using portable mode");
@@ -79,12 +79,14 @@ impl CismuPaths {
     }
 
     /// Devuelve true si este es el primer arranque (cismu.lock no existía)
+    #[instrument(level = Level::DEBUG, skip(self), ret)]
     pub fn is_first_run(&self) -> bool {
         !self.lock_file.exists()
     }
 
     /// Crea (si no existe) y adquiere un advisory-lock excluyente en cismu.lock.
     /// Mantén vivo el File retornado para conservar el lock.
+    #[instrument(level = Level::TRACE, err, skip(self), fields(lock_file = %self.lock_file.display()))]
     pub fn lock(&self) -> Result<File, Error> {
         fs_utils::lock_file(&self.lock_file)
     }
@@ -95,7 +97,7 @@ impl CismuPaths {
     ///
     /// Estructura:
     ///   <cache_dir>/covers/<1º nibble>/<2 primeros nibbles>/<hash>.<ext>
-    #[instrument(skip_all, level = Level::DEBUG)]
+    #[instrument(level = Level::TRACE, err, skip(self, hash, ext), fields(hash, ext))]
     pub fn cover_path(&self, hash: &str, ext: &str) -> Result<PathBuf, Error> {
         let hex = hash.to_lowercase();
 
@@ -118,6 +120,7 @@ impl CismuPaths {
     }
 
     /// Asegura que la carpeta del cover existe y devuelve la ruta completa lista para escribir.
+    #[instrument(level = Level::TRACE, err, skip(self, hash, ext), fields(hash, ext))]
     pub fn ensure_cover_path(&self, hash: &str, ext: &str) -> Result<PathBuf, Error> {
         let path = self.cover_path(hash, ext)?;
         if let Some(parent) = path.parent() {
@@ -129,8 +132,10 @@ impl CismuPaths {
 
 impl CismuPaths {
     /// Se asegura de que TODOS los dirs y ficheros básicos existen.
-    #[instrument(skip_all, level = Level::DEBUG)]
+    #[instrument(level = Level::INFO, err, skip(self))]
     pub fn ensure_structure(&self) -> Result<(), Error> {
+        info!("Ensuring structure");
+
         // carpetas
         fs_utils::ensure_dir(&self.config_dir)?;
         fs_utils::ensure_dir(&self.data_dir)?;
@@ -154,8 +159,10 @@ impl CismuPaths {
 
     /// Valida que cada ruta existe Y es escribible. Si falta, la intenta crear.
     /// Si no tiene permisos de escritura, retorna Err.
-    #[instrument(skip_all, level = Level::DEBUG)]
+    #[instrument(level = Level::INFO, err, skip(self))]
     pub fn validate_structure(&self) -> Result<(), Error> {
+        info!("Validating structure");
+
         let all_paths = vec![
             &self.config_dir,
             &self.data_dir,
@@ -166,6 +173,7 @@ impl CismuPaths {
             &self.waveforms_dir,
             &self.lyrics_dir,
         ];
+
         for dir in all_paths {
             if !dir.exists() {
                 fs_utils::ensure_dir(dir)?;
@@ -173,6 +181,7 @@ impl CismuPaths {
             // chequea permisos de escritura:
             fs_utils::check_writable(dir)?;
         }
+
         Ok(())
     }
 }
