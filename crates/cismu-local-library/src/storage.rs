@@ -1,20 +1,19 @@
 use std::{collections::HashSet, path::PathBuf};
 
-use crate::traits::Storage;
 use base64::{Engine, prelude::BASE64_URL_SAFE_NO_PAD};
 use rand::RngCore;
+use tokio::runtime::Handle;
 
 pub struct LocalStorage {
     config: LocalStorageConfig,
+    handle: Handle,
 }
 
 impl LocalStorage {
-    pub fn new(config: LocalStorageConfig) -> Self {
-        LocalStorage { config }
+    pub fn new(handle: Handle, config: LocalStorageConfig) -> Self {
+        LocalStorage { config, handle }
     }
 }
-
-impl Storage for LocalStorage {}
 
 #[derive(Debug, Clone)]
 pub enum DatabaseConfig {
