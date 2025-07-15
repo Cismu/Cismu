@@ -3,6 +3,7 @@ mod model;
 use std::{borrow::Cow, fs, io::Cursor, path::PathBuf};
 
 use anyhow::{Result, anyhow};
+use bliss_audio::Song;
 use cismu_paths::PATHS;
 use futures::{StreamExt, stream::FuturesUnordered};
 use image::{ImageReader, codecs::jpeg::JpegEncoder};
@@ -12,22 +13,22 @@ use lofty::{
     tag::{Accessor, ItemKey},
 };
 use sha2::{Digest, Sha256};
-use tokio::sync::mpsc;
+use tokio::{runtime::Handle, sync::mpsc};
 
 use crate::{
     fingerprint::fingerprint_from_file,
     metadata::model::{Artwork, AudioInfo, Rating, TrackMetadata, TrackMetadataBuilder},
     scanner::{ScanResult, TrackFile},
-    traits::MetadataProcessor,
 };
 
 pub struct LocalMetadata {
     config: LocalMetadataConfig,
+    handle: Handle,
 }
 
 impl LocalMetadata {
-    pub fn new(config: LocalMetadataConfig) -> Self {
-        LocalMetadata { config }
+    pub fn new(handle: Handle, config: LocalMetadataConfig) -> Self {
+        LocalMetadata { config, handle }
     }
 
     pub fn process_metadata(
@@ -107,11 +108,8 @@ impl LocalMetadata {
     }
 }
 
-#[async_trait::async_trait]
-impl MetadataProcessor for LocalMetadata {
-    type Item = TrackMetadata;
-
-    async fn process(&self, scan: ScanResult) -> Result<Vec<TrackMetadata>> {
+impl LocalMetadata {
+    pub async fn process(&self, scan: ScanResult) -> Result<Vec<TrackMetadata>> {
         let (tx, mut rx) = mpsc::channel(512);
 
         for track_files in scan.into_values() {

@@ -27,6 +27,8 @@ tauri-plugin-devtools = "2.0.0"
 log = "0.4.27"
 tracing = "0.1.41"
 anyhow = "1.0.98"
+cismu-local-library = { version = "0.1.0", path = "../../crates/cismu-local-library" }
+tracing-subscriber = "0.3.19"
 
 [profile.dev]
 incremental = true # Compile your binary in smaller steps.

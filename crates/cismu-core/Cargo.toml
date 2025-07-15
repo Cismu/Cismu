@@ -5,7 +5,5 @@ edition = "2024"
 
 [dependencies]
 anyhow = "1.0.98"
-cismu-local-library = { version = "0.1.0", path = "../cismu-local-library" }
 indoc = "2.0.6"
-tokio = { version = "1.45.1", features = ["sync"] }
 tracing = "0.1.41"

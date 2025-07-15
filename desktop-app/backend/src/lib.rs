@@ -1,36 +1,37 @@
 use anyhow::Result;
+use tauri::{async_runtime::handle, Manager};
+use tracing::{debug, info, instrument, Level};
 
-use tauri::async_runtime::handle;
-use tauri::Manager;
-use tracing::{info, instrument, Level};
+use cismu_local_library::{config_manager::ConfigManager, LibraryManager};
 
-// fn init_library() -> Result<LibraryManager<LocalScanner, LocalMetadata, LocalStorage>> {
-//     let rt = handle();
-//     let tokio_handle = rt.inner().clone();
+#[instrument(name = "init_library", level = Level::INFO, err, skip_all)]
+fn init_library() -> Result<LibraryManager> {
+    let rt = handle();
+    let tokio_handle = rt.inner().clone();
 
-//     let config = ConfigManager::new();
-//     info!("ConfigManager created");
+    let _config_span = tracing::debug_span!("load_config").entered();
+    let config = ConfigManager::new();
+    debug!("ConfigManager created");
 
-//     let library = LibraryManager::new(tokio_handle, config);
-//     info!("LibraryManager created and ready to manage your library");
+    let library = LibraryManager::new(tokio_handle, config);
+    debug!("LibraryManager instance ready");
 
-//     Ok(library)
-// }
+    Ok(library)
+}
 
-#[instrument(name = "setup_app", level = Level::DEBUG, skip(app))]
+#[instrument(name = "setup_app", level = Level::INFO, err, skip(app))]
 fn setup(app: &mut tauri::App) -> Result<()> {
-    info!("Initializing Cismu! Are you ready?");
+    info!("🚀 Initializing Cismu…");
 
-    // let library = init_library()?;
-    // app.manage(library);
-    info!("LibraryManager registered in the App");
+    let library = init_library()?;
+    app.manage(library);
+    info!("✅ LibraryManager registered in App");
 
     Ok(())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // This should be called as early in the execution of the app as possible
     #[cfg(debug_assertions)] // only enable instrumentation in development builds
     let devtools = tauri_plugin_devtools::init();
 
@@ -40,6 +41,8 @@ pub fn run() {
     {
         builder = builder.plugin(devtools);
     }
+
+    // TODO: Add real logger for prod.
 
     builder
         .setup(|app| setup(app).map_err(Into::into))
