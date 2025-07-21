@@ -1,17 +1,15 @@
-use std::{collections::HashSet, path::PathBuf};
+use std::{collections::HashSet, path::PathBuf, sync::Arc};
 
 use base64::{Engine, prelude::BASE64_URL_SAFE_NO_PAD};
 use rand::RngCore;
-use tokio::runtime::Handle;
 
 pub struct LocalStorage {
-    config: LocalStorageConfig,
-    handle: Handle,
+    config: Arc<LocalStorageConfig>,
 }
 
 impl LocalStorage {
-    pub fn new(handle: Handle, config: LocalStorageConfig) -> Self {
-        LocalStorage { config, handle }
+    pub fn new(config: Arc<LocalStorageConfig>) -> Self {
+        LocalStorage { config }
     }
 }
 
