@@ -3,7 +3,7 @@ import Layout from "@/layouts/Layout.astro";
 ---
 
 <Layout>
-    <input id="search" type="text" />
+    <button id="scan">Scan</button>
 </Layout>
 
 <style>
@@ -16,3 +16,13 @@ import Layout from "@/layouts/Layout.astro";
         padding: 10px;
     }
 </style>
+
+<script>
+    import { invoke } from "@tauri-apps/api/core";
+
+    const scan = async () => {
+        await invoke("scan");
+    };
+
+    (document.getElementById("scan") as any).addEventListener("click", scan);
+</script>

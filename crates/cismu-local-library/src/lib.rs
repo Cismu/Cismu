@@ -5,40 +5,64 @@ pub mod metadata;
 pub mod scanner;
 pub mod storage;
 
-use std::sync::Arc;
+use std::{sync::Arc, time::Instant};
 
 use cismu_core::library::Library;
 use tokio::runtime::Handle;
-use tracing::{Level, instrument};
+use tracing::info;
 
 use crate::{
     config_manager::ConfigManager, metadata::LocalMetadata, scanner::LocalScanner, storage::LocalStorage,
 };
 
 pub struct LibraryManager {
-    // scanner: Arc<LocalScanner>,
-    // metadata: LocalMetadata,
-    // storage: LocalStorage,
+    scanner: Arc<LocalScanner>,
+    metadata: Arc<LocalMetadata>,
+    storage: LocalStorage,
     // handle: Handle,
 }
 
 impl LibraryManager {
-    #[instrument(skip_all, level = Level::DEBUG)]
-    pub fn new(handle: Handle, config: ConfigManager) -> Self {
+    pub fn new(_: Handle, config: ConfigManager) -> Self {
         let scanner = Arc::new(LocalScanner::new(config.scanner));
-        let scanner_clone = scanner.clone();
-        // let metadata = LocalMetadata::new(config.metadata);
-        // let storage = LocalStorage::new(config.storage);
-
-        // let results = handle.block_on(async move { scanner_clone.scan_async().await }).unwrap();
-        // println!("Results: {:?}", results);
+        let metadata = Arc::new(LocalMetadata::new(config.metadata));
+        let storage = LocalStorage::new(Arc::new(config.storage));
 
         LibraryManager {
-            // scanner,
-            // metadata,
-            // storage,
+            scanner,
+            metadata,
+            storage,
             // handle,
         }
+    }
+
+    pub async fn scan(&self) {
+        info!("Starting file scan...");
+        let scan_result = self.scanner.scan().await.unwrap();
+        info!("Scan complete.");
+
+        info!("Starting metadata processing and storage...");
+        let start_time = Instant::now();
+        let mut tracks_processed = 0;
+
+        let mut tracks_receiver = self.metadata.process(scan_result);
+
+        while let Some(result) = tracks_receiver.recv().await {
+            match result {
+                Ok(track) => {
+                    info!("Processing track: {}", track.path.display());
+                    // self.storage.save_track(&track).unwrap();
+                    tracks_processed += 1;
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to process a track: {}", e);
+                }
+            }
+        }
+
+        let elapsed = start_time.elapsed();
+        info!("Processing and storage took {} ms", elapsed.as_millis());
+        info!("{} tracks processed and saved", tracks_processed);
     }
 }
 
