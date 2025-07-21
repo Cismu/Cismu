@@ -1,3 +1,5 @@
+use tracing::{instrument, Level};
+
 use crate::{metadata::LocalMetadataConfig, scanner::LocalScannerConfig, storage::LocalStorageConfig};
 
 #[derive(Debug, Clone)]
@@ -8,6 +10,7 @@ pub struct ConfigManager {
 }
 
 impl ConfigManager {
+    #[instrument(name = "ConfigManager::new", level = Level::INFO, skip_all)]
     pub fn new() -> Self {
         ConfigManager {
             scanner: LocalScannerConfig::default(),

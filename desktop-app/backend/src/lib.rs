@@ -1,8 +1,10 @@
 use anyhow::Result;
-use tauri::{async_runtime::handle, Manager};
+use tauri::{async_runtime::handle, Manager, State};
 use tracing::{debug, info, instrument, Level};
 
 use cismu_local_library::{config_manager::ConfigManager, LibraryManager};
+use tracing_subscriber::prelude::*;
+use tracing_subscriber::{fmt, EnvFilter};
 
 #[instrument(name = "init_library", level = Level::INFO, err, skip_all)]
 fn init_library() -> Result<LibraryManager> {
@@ -32,22 +34,35 @@ fn setup(app: &mut tauri::App) -> Result<()> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    #[cfg(debug_assertions)] // only enable instrumentation in development builds
-    let devtools = tauri_plugin_devtools::init();
+    let mut filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("debug"));
+    filter = filter
+        .add_directive("off".parse().unwrap())
+        .add_directive("tauri=off".parse().unwrap())
+        .add_directive("cismu=debug".parse().unwrap())
+        .add_directive("cismu_local_library=debug".parse().unwrap())
+        .add_directive("cismu_core=debug".parse().unwrap())
+        .add_directive("tauri_runtime=off".parse().unwrap());
 
-    let mut builder = tauri::Builder::default();
+    let fmt_layer = fmt::layer()
+        .with_target(false)
+        .with_thread_ids(true)
+        .with_thread_names(true);
 
-    #[cfg(debug_assertions)]
-    {
-        builder = builder.plugin(devtools);
-    }
+    tracing_subscriber::registry().with(filter).with(fmt_layer).init();
 
-    // TODO: Add real logger for prod.
-
-    builder
+    tauri::Builder::default()
         .setup(|app| setup(app).map_err(Into::into))
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![])
+        .invoke_handler(tauri::generate_handler![scan])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[tauri::command]
+async fn scan(state: State<'_, LibraryManager>) -> tauri::Result<()> {
+    let library = state.clone();
+
+    let _ = library.scan().await;
+
+    Ok(())
 }
