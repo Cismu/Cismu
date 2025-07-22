@@ -1,3 +1,5 @@
+use std::sync::{Arc, Mutex};
+
 use anyhow::Result;
 use tauri::{async_runtime::handle, Manager, State};
 use tracing::{debug, info, instrument, Level};
@@ -26,7 +28,7 @@ fn setup(app: &mut tauri::App) -> Result<()> {
     info!("🚀 Initializing Cismu…");
 
     let library = init_library()?;
-    app.manage(library);
+    app.manage(Arc::new(library));
     info!("✅ LibraryManager registered in App");
 
     Ok(())
@@ -59,10 +61,9 @@ pub fn run() {
 }
 
 #[tauri::command]
-async fn scan(state: State<'_, LibraryManager>) -> tauri::Result<()> {
-    let library = state.clone();
-
-    let _ = library.scan().await;
+async fn scan(state: State<'_, Arc<LibraryManager>>) -> tauri::Result<()> {
+    let library = state.inner().clone();
+    library.scan().await;
 
     Ok(())
 }

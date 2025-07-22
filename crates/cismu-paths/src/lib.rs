@@ -11,7 +11,8 @@ pub use directories::UserDirs;
 use once_cell::sync::Lazy;
 
 /// Singleton global, para usar en todo el crate sin repetir `new()`
-pub static PATHS: Lazy<CismuPaths> = Lazy::new(|| CismuPaths::new().expect("Failed to initialize CismuPaths"));
+pub static PATHS: Lazy<CismuPaths> =
+    Lazy::new(|| CismuPaths::new().expect("Failed to initialize CismuPaths"));
 
 #[cfg(test)]
 mod tests {
@@ -53,7 +54,9 @@ mod tests {
         let _env = EnvVarGuard::new("CISMU_BASE_DIR", tmp.path().to_str().unwrap());
 
         let paths = CismuPaths::new().unwrap();
-        let p = paths.cover_path("1a47929b", "jpg").unwrap();
+        let p = paths
+            .cover_path(tmp.path().to_path_buf(), "1a47929b", "jpg")
+            .unwrap();
 
         let expected: PathBuf = tmp
             .path()
@@ -71,7 +74,9 @@ mod tests {
         let _env = EnvVarGuard::new("CISMU_BASE_DIR", tmp.path().to_str().unwrap());
 
         let paths = CismuPaths::new().unwrap();
-        let err = paths.cover_path("f", "png").unwrap_err();
+        let err = paths
+            .cover_path(tmp.path().to_path_buf(), "f", "png")
+            .unwrap_err();
         match err {
             Error::InvalidCoverHash(h) => assert_eq!(h, "f".to_string()),
             _ => panic!("Esperaba InvalidCoverHash"),
@@ -84,7 +89,9 @@ mod tests {
         let _env = EnvVarGuard::new("CISMU_BASE_DIR", tmp.path().to_str().unwrap());
 
         let paths = CismuPaths::new().unwrap();
-        let err = paths.cover_path("zzzz", "png").unwrap_err();
+        let err = paths
+            .cover_path(tmp.path().to_path_buf(), "zzzz", "png")
+            .unwrap_err();
         match err {
             Error::InvalidCoverHash(h) => assert_eq!(h, "zzzz".to_string()),
             _ => panic!("Esperaba InvalidCoverHash"),

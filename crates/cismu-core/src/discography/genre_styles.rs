@@ -1,6 +1,7 @@
 use anyhow::Result;
 use std::{fmt, str::FromStr};
 
+/// Define el género musical (se usa el modelo de Discogs).
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Genre {
     Rock,
@@ -106,9 +107,9 @@ pub enum Style {
 }
 
 impl FromStr for Style {
-    type Err = anyhow::Error;
+    type Err = std::convert::Infallible;
 
-    fn from_str(s: &str) -> Result<Self> {
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         let normalized = s.to_lowercase().replace(['-', ' '], "");
 
         let style = match normalized.as_str() {

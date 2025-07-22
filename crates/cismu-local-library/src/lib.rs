@@ -5,11 +5,16 @@ pub mod metadata;
 pub mod scanner;
 pub mod storage;
 
-use std::{sync::Arc, time::Instant};
+use std::{
+    sync::{Arc, Mutex},
+    time::Instant,
+};
 
 use cismu_core::library::Library;
 use tokio::runtime::Handle;
 use tracing::info;
+
+use indicatif::{ProgressBar, ProgressDrawTarget, ProgressStyle};
 
 use crate::{
     config_manager::ConfigManager, metadata::LocalMetadata, scanner::LocalScanner, storage::LocalStorage,
@@ -18,47 +23,82 @@ use crate::{
 pub struct LibraryManager {
     scanner: Arc<LocalScanner>,
     metadata: Arc<LocalMetadata>,
-    storage: LocalStorage,
-    // handle: Handle,
+    storage: Arc<Mutex<LocalStorage>>,
 }
 
 impl LibraryManager {
     pub fn new(_: Handle, config: ConfigManager) -> Self {
         let scanner = Arc::new(LocalScanner::new(config.scanner));
         let metadata = Arc::new(LocalMetadata::new(config.metadata));
-        let storage = LocalStorage::new(Arc::new(config.storage));
+
+        let storage = match LocalStorage::new(config.storage) {
+            Ok(storage) => Arc::new(Mutex::new(storage)),
+            Err(e) => {
+                eprintln!("Failed to initialize storage: {}", e);
+                std::process::exit(1);
+            }
+        };
 
         LibraryManager {
             scanner,
             metadata,
             storage,
-            // handle,
         }
     }
 
     pub async fn scan(&self) {
+        let scanner = Arc::clone(&self.scanner);
+        let metadata = Arc::clone(&self.metadata);
+        let storage = Arc::clone(&self.storage);
+
         info!("Starting file scan...");
-        let scan_result = self.scanner.scan().await.unwrap();
+        let scan_result = scanner.scan().await.unwrap();
         info!("Scan complete.");
+
+        // 1) Calcula cuántas pistas en total vamos a procesar:
+        let total_tracks: usize = scan_result.iter().map(|(_, files)| files.len()).sum();
+
+        // 2) Crea y configura la barra de progreso
+        let pb = ProgressBar::new(total_tracks as u64);
+        pb.set_draw_target(ProgressDrawTarget::stdout());
+        pb.set_style(
+            ProgressStyle::default_bar()
+                .template(
+                    "{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({eta})",
+                )
+                .unwrap()
+                .progress_chars("=>-"),
+        );
 
         info!("Starting metadata processing and storage...");
         let start_time = Instant::now();
         let mut tracks_processed = 0;
 
-        let mut tracks_receiver = self.metadata.process(scan_result);
+        let mut tracks_receiver = metadata.process(scan_result);
 
+        // 3) Por cada resultado, avanza la barra y guarda o registra el error
         while let Some(result) = tracks_receiver.recv().await {
+            pb.inc(1);
             match result {
                 Ok(track) => {
-                    info!("Processing track: {}", track.path.display());
-                    // self.storage.save_track(&track).unwrap();
+                    let artist_name: &str = track
+                        .artists
+                        .first()
+                        .map(|s| s.as_str())
+                        .unwrap_or("Unknown Artist");
+
+                    let _ = storage.lock().unwrap().insert_artist(artist_name, None);
+                    pb.println(format!("Processing: {}", track.file_details.path.display()));
                     tracks_processed += 1;
                 }
                 Err(e) => {
-                    tracing::warn!("Failed to process a track: {}", e);
+                    pb.println(format!("⚠ Failed to process: {}", e));
                 }
             }
         }
+
+        // 4) Finaliza la barra
+        pb.finish_with_message("Processing complete");
 
         let elapsed = start_time.elapsed();
         info!("Processing and storage took {} ms", elapsed.as_millis());

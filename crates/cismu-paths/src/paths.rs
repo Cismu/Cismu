@@ -1,8 +1,7 @@
-use core::error;
 use std::{env, fs::File, path::PathBuf};
 
 use crate::{errors::Error, fs_utils};
-use tracing::{Level, debug, error, info, instrument, span};
+use tracing::{Level, error, info, instrument};
 
 use directories::ProjectDirs;
 
@@ -98,7 +97,7 @@ impl CismuPaths {
     /// Estructura:
     ///   <cache_dir>/covers/<1º nibble>/<2 primeros nibbles>/<hash>.<ext>
     #[instrument(level = Level::TRACE, err, skip(self, hash, ext), fields(hash, ext))]
-    pub fn cover_path(&self, hash: &str, ext: &str) -> Result<PathBuf, Error> {
+    pub fn cover_path(&self, base_dir: PathBuf, hash: &str, ext: &str) -> Result<PathBuf, Error> {
         let hex = hash.to_lowercase();
 
         // 1) Validaciones
@@ -112,17 +111,13 @@ impl CismuPaths {
         let d2 = &hex[0..2];
 
         // 3) Formamos el PathBuf
-        Ok(self
-            .covers_dir
-            .join(d1)
-            .join(d2)
-            .join(format!("{}.{}", hex, ext.trim_start_matches('.'))))
+        Ok(base_dir.join(d1).join(d2).join(format!("{}.{}", hex, ext.trim_start_matches('.'))))
     }
 
     /// Asegura que la carpeta del cover existe y devuelve la ruta completa lista para escribir.
     #[instrument(level = Level::TRACE, err, skip(self, hash, ext), fields(hash, ext))]
-    pub fn ensure_cover_path(&self, hash: &str, ext: &str) -> Result<PathBuf, Error> {
-        let path = self.cover_path(hash, ext)?;
+    pub fn ensure_cover_path(&self, base_dir: PathBuf, hash: &str, ext: &str) -> Result<PathBuf, Error> {
+        let path = self.cover_path(base_dir, hash, ext)?;
         if let Some(parent) = path.parent() {
             fs_utils::ensure_dir(parent)?;
         }

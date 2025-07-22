@@ -1,7 +1,6 @@
-use super::genre_styles::Genre;
-
 pub type ArtistId = u64;
 
+/// La entidad Artista: El creador de la música.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Artist {
     pub id: ArtistId,
@@ -9,5 +8,4 @@ pub struct Artist {
     pub variations: Vec<String>,
     pub bio: Option<String>,
     pub sites: Vec<String>,
-    pub genres: Vec<Genre>,
 }
