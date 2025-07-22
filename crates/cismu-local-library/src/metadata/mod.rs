@@ -4,44 +4,52 @@ mod covers;
 use std::borrow::Cow;
 use std::{path::PathBuf, sync::Arc};
 
-use anyhow::{Result, anyhow};
-use futures::stream::FuturesUnordered;
+use anyhow::Result;
+use cismu_core::discography::UnresolvedTrack;
+use tracing::{error, warn};
 
-use bliss_audio::decoder::{Decoder, ffmpeg::FFmpegDecoder};
 use lofty::file::TaggedFileExt;
 use lofty::tag::{Accessor, ItemKey};
 use lofty::{file::AudioFile, probe::Probe};
 
-use cismu_core::discography::release_track::{AudioAnalysis, AudioQuality, FromBlissSong, UnresolvedTrack};
-use cismu_paths::PATHS;
-
+use futures::stream::FuturesUnordered;
 use futures::{StreamExt, stream};
-use tokio::sync::{Semaphore, mpsc};
-use tokio::task;
+use tokio::sync::{
+    Semaphore,
+    mpsc::{self, Receiver, Sender},
+};
+use tokio::task::spawn_blocking;
 
-use tracing::{error, warn};
+use cismu_paths::PATHS;
 
 use crate::metadata::covers::picture_to_cover;
 use crate::scanner::{ScanResult, TrackFile};
 
+#[derive(Debug, Clone)]
 pub struct LocalMetadata {
-    config: LocalMetadataConfig,
+    config: Arc<LocalMetadataConfig>,
 }
 
 impl LocalMetadata {
     pub fn new(config: LocalMetadataConfig) -> Self {
-        LocalMetadata { config }
+        LocalMetadata {
+            config: config.into(),
+        }
     }
 
-    pub fn process(&self, scan: ScanResult) -> mpsc::Receiver<Result<UnresolvedTrack>> {
+    fn calc_max_threads(&self) -> (usize, usize) {
         let max_threads = (num_cpus::get() as f32 * self.config.cpu_percent / 100.0).ceil() as usize;
         let max_threads = max_threads.max(1);
         let max_threads = max_threads.clamp(1, 100);
+        (max_threads, max_threads.saturating_mul(2))
+    }
 
-        let chan_size = max_threads.saturating_mul(2);
+    pub fn process(&self, scan: ScanResult) -> Receiver<Result<UnresolvedTrack>> {
+        let (max_threads, chan_size) = self.calc_max_threads();
+
         let (tx, rx) = mpsc::channel(chan_size);
 
-        let config = Arc::new(self.config.clone());
+        let config = self.config.clone();
         tokio::spawn(async move {
             let mut futs = FuturesUnordered::new();
 
@@ -69,29 +77,28 @@ impl LocalMetadata {
 
     /// Procesa todos los archivos de un único dispositivo en paralelo.
     async fn process_device_group(
-        tx: mpsc::Sender<std::result::Result<UnresolvedTrack, anyhow::Error>>,
+        tx: Sender<Result<UnresolvedTrack>>,
         files: Vec<TrackFile>,
-        config: Arc<LocalMetadataConfig>,
-        max_threads: usize,
+        cfg: Arc<LocalMetadataConfig>,
+        permits: usize,
     ) -> Result<()> {
-        let sem = Arc::new(Semaphore::new(max_threads));
+        let sem = Arc::new(Semaphore::new(permits));
 
         let stream_of_futures = files.into_iter().map(|track| {
             let sem = sem.clone();
-            let config = config.clone();
+            let cfg = cfg.clone();
 
             async move {
                 let _permit = sem.acquire_owned().await?;
 
                 let result =
-                    task::spawn_blocking(move || Self::decode_single_audio(track, config.clone()))
-                        .await??;
+                    spawn_blocking(move || Self::decode_single_audio(track, cfg.clone())).await??;
 
                 Ok::<_, anyhow::Error>(result)
             }
         });
 
-        let mut stream = stream::iter(stream_of_futures).buffer_unordered(max_threads);
+        let mut stream = stream::iter(stream_of_futures).buffer_unordered(permits);
 
         while let Some(result) = stream.next().await {
             if tx.send(result).await.is_err() {
@@ -103,81 +110,57 @@ impl LocalMetadata {
     }
 
     fn decode_single_audio(file: TrackFile, cfg: Arc<LocalMetadataConfig>) -> Result<UnresolvedTrack> {
-        // let song = FFmpegDecoder::song_from_path(file.path)?;
         let mut track = UnresolvedTrack::default();
-        track.file_details.path = file.path;
-        let path = track.file_details.path.clone();
 
-        let tagged = Probe::open(&path)?.read()?;
+        // Alimentar track con TrackFile
+        track.path = file.path;
+        track.file_size = file.file_size;
+        track.last_modified = file.last_modified;
+
+        let tagged = Probe::open(track.path.clone())?.read()?;
         let props = tagged.properties();
 
         let duration = props.duration();
         let min_duration = file.extension.config().min_duration;
 
         if duration < min_duration {
-            return Err(anyhow!("El archivo es demasiado corto"));
+            return Err(anyhow::anyhow!("El archivo es demasiado corto"));
         }
 
-        let audio_bitrate = props.audio_bitrate();
-        let sample_rate = props.sample_rate();
-        let channels = props.channels();
+        // --- Detalles Técnicos ---
+        track.duration = duration;
+        track.bitrate_kbps = props.audio_bitrate();
+        track.sample_rate = props.sample_rate();
+        track.channels = props.channels();
 
-        track.audio_details.duration = duration;
-        track.audio_details.bitrate_kbps = audio_bitrate;
-        track.audio_details.sample_rate_hz = sample_rate;
-        track.audio_details.channels = channels;
-
-        if cfg.fingerprint == FingerprintAlgorithm::Chromaprint {
-            // track.audio_details.fingerprint = Some(fingerprint_from_file(&path)?);
-        }
-
-        if let Some(analysis) = track.audio_details.analysis.clone() {
-            if let Some(sample_rate) = sample_rate {
-                if let Some(channels) = channels {
-                    let result = analysis::get_analysis(&path, sample_rate, channels);
-                    match result {
-                        Ok(quality) => {
-                            let quality = Some(AudioQuality {
-                                score: quality.quality_score,
-                                assessment: quality.overall_assessment,
-                            });
-                            track.audio_details.analysis = Some(AudioAnalysis { quality, ..analysis });
-                        }
-                        Err(e) => {
-                            warn!(%e, "no se pudo calcular la calidad del audio");
-                        }
-                    }
-                }
-            }
-        }
-
+        // --- Metadatos y Créditos ---
         if let Some(tag) = tagged.primary_tag().or_else(|| tagged.first_tag()) {
-            if track.title.is_none() {
-                track.title = tag.title().map(Cow::into_owned);
+            track.title = tag.title().map(Cow::into_owned);
+            track.album = tag.album().map(Cow::into_owned);
+            track.album_artist = tag.get_string(&ItemKey::AlbumArtist).map(str::to_string);
+            track.track_number = tag.track().and_then(|n| n.try_into().ok());
+            track.disc_number = tag.disk().and_then(|n| n.try_into().ok());
+            track.genre = tag.genre().map(Cow::into_owned).map(|g| vec![g]);
+
+            if let Some(performers_str) = tag.artist().map(Cow::into_owned) {
+                track.performers = performers_str
+                    .split(&['/', ';', ','])
+                    .map(|a| a.trim().to_string())
+                    .collect();
             }
-            if track.album.is_none() {
-                track.album = tag.album().map(Cow::into_owned);
+
+            if let Some(composers_str) = tag.get_string(&ItemKey::Composer) {
+                track.composers = composers_str
+                    .split(&['/', ';', ','])
+                    .map(|c| c.trim().to_string())
+                    .collect();
             }
-            if track.album_artist.is_none() {
-                track.album_artist = tag.get_string(&ItemKey::AlbumArtist).map(str::to_string);
-            }
-            if track.track_number.is_none() {
-                track.track_number = tag.track().and_then(|n| n.try_into().ok());
-            }
-            if track.disc_number.is_none() {
-                track.disc_number = tag.disk().and_then(|n| n.try_into().ok());
-            }
-            if track.genre.is_none() {
-                track.genre = tag.genre().map(Cow::into_owned).map(|g| vec![g]);
-            }
-            if track.year.is_none() {
-                track.year = tag.year().map(|y| y.to_string());
-            }
-            if track.composer.is_none() {
-                track.composer = tag
-                    .get_string(&ItemKey::Composer)
-                    .map(str::to_string)
-                    .map(|c| vec![c]);
+
+            if let Some(producers_str) = tag.get_string(&ItemKey::Producer) {
+                track.producers = producers_str
+                    .split(&['/', ';', ','])
+                    .map(|p| p.trim().to_string())
+                    .collect();
             }
 
             let mut arts = Vec::new();
@@ -198,9 +181,6 @@ impl LocalMetadata {
     }
 }
 
-// -----------------------------------------------------------------------------
-// Config & enums
-// -----------------------------------------------------------------------------
 #[derive(Debug, Clone, PartialEq)]
 pub enum FingerprintAlgorithm {
     Chromaprint,

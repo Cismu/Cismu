@@ -1,112 +1,105 @@
 pub mod config_manager;
+pub mod embedded;
 pub mod extensions;
 pub mod fingerprint;
+pub mod library_manager;
 pub mod metadata;
 pub mod scanner;
 pub mod storage;
 
-use std::{
-    sync::{Arc, Mutex},
-    time::Instant,
-};
+pub use library_manager::LibraryManager;
 
-use cismu_core::library::Library;
-use tokio::runtime::Handle;
-use tracing::info;
+// pub struct LibraryManager {
+//     // scanner: Arc<LocalScanner>,
+//     // metadata: Arc<LocalMetadata>,
+//     // storage: Arc<Mutex<LocalStorage>>,
+// }
 
-use indicatif::{ProgressBar, ProgressDrawTarget, ProgressStyle};
+// impl LibraryManager {
+//     pub fn new(_: Handle, config: ConfigManager) -> Self {
+//         // let scanner = Arc::new(LocalScanner::new(config.scanner));
+//         // let metadata = Arc::new(LocalMetadata::new(config.metadata));
 
-use crate::{
-    config_manager::ConfigManager, metadata::LocalMetadata, scanner::LocalScanner, storage::LocalStorage,
-};
+//         // let storage = match LocalStorage::new(config.storage) {
+//         //     Ok(storage) => Arc::new(Mutex::new(storage)),
+//         //     Err(e) => {
+//         //         eprintln!("Failed to initialize storage: {}", e);
+//         //         std::process::exit(1);
+//         //     }
+//         // };
 
-pub struct LibraryManager {
-    scanner: Arc<LocalScanner>,
-    metadata: Arc<LocalMetadata>,
-    storage: Arc<Mutex<LocalStorage>>,
-}
+//         // LibraryManager {
+//         //     scanner,
+//         //     metadata,
+//         //     storage,
+//         // }
 
-impl LibraryManager {
-    pub fn new(_: Handle, config: ConfigManager) -> Self {
-        let scanner = Arc::new(LocalScanner::new(config.scanner));
-        let metadata = Arc::new(LocalMetadata::new(config.metadata));
+//         let database = LocalStorage::new(config.storage).unwrap();
 
-        let storage = match LocalStorage::new(config.storage) {
-            Ok(storage) => Arc::new(Mutex::new(storage)),
-            Err(e) => {
-                eprintln!("Failed to initialize storage: {}", e);
-                std::process::exit(1);
-            }
-        };
+//         LibraryManager {}
+//     }
 
-        LibraryManager {
-            scanner,
-            metadata,
-            storage,
-        }
-    }
+//     pub async fn scan(&self) {
+//         // let scanner = Arc::clone(&self.scanner);
+//         // let metadata = Arc::clone(&self.metadata);
+//         // let storage = Arc::clone(&self.storage);
 
-    pub async fn scan(&self) {
-        let scanner = Arc::clone(&self.scanner);
-        let metadata = Arc::clone(&self.metadata);
-        let storage = Arc::clone(&self.storage);
+//         // info!("Starting file scan...");
+//         // let scan_result = scanner.scan().await.unwrap();
+//         // info!("Scan complete.");
 
-        info!("Starting file scan...");
-        let scan_result = scanner.scan().await.unwrap();
-        info!("Scan complete.");
+//         // // 1) Calcula cuántas pistas en total vamos a procesar:
+//         // let total_tracks: usize = scan_result.iter().map(|(_, files)| files.len()).sum();
 
-        // 1) Calcula cuántas pistas en total vamos a procesar:
-        let total_tracks: usize = scan_result.iter().map(|(_, files)| files.len()).sum();
+//         // // 2) Crea y configura la barra de progreso
+//         // let pb = ProgressBar::new(total_tracks as u64);
+//         // pb.set_draw_target(ProgressDrawTarget::stdout());
+//         // pb.set_style(
+//         //     ProgressStyle::default_bar()
+//         //         .template(
+//         //             "{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({eta})",
+//         //         )
+//         //         .unwrap()
+//         //         .progress_chars("=>-"),
+//         // );
 
-        // 2) Crea y configura la barra de progreso
-        let pb = ProgressBar::new(total_tracks as u64);
-        pb.set_draw_target(ProgressDrawTarget::stdout());
-        pb.set_style(
-            ProgressStyle::default_bar()
-                .template(
-                    "{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({eta})",
-                )
-                .unwrap()
-                .progress_chars("=>-"),
-        );
+//         // info!("Starting metadata processing and storage...");
+//         // let start_time = Instant::now();
+//         // let mut tracks_processed = 0;
 
-        info!("Starting metadata processing and storage...");
-        let start_time = Instant::now();
-        let mut tracks_processed = 0;
+//         // // let mut tracks_receiver = metadata.process(scan_result);
 
-        let mut tracks_receiver = metadata.process(scan_result);
+//         // // // 3) Por cada resultado, avanza la barra y guarda o registra el error
+//         // // while let Some(result) = tracks_receiver.recv().await {
+//         // //     pb.inc(1);
+//         // //     match result {
+//         // //         Ok(track) => {
+//         // //             let artist_name: &str = track
+//         // //                 .artists
+//         // //                 .first()
+//         // //                 .map(|s| s.as_str())
+//         // //                 .unwrap_or("Unknown Artist");
 
-        // 3) Por cada resultado, avanza la barra y guarda o registra el error
-        while let Some(result) = tracks_receiver.recv().await {
-            pb.inc(1);
-            match result {
-                Ok(track) => {
-                    let artist_name: &str = track
-                        .artists
-                        .first()
-                        .map(|s| s.as_str())
-                        .unwrap_or("Unknown Artist");
+//         // //             let _ = storage.lock().unwrap().insert_artist(artist_name, None);
+//         // //             pb.println(format!("Processing: {}", track.file_details.path.display()));
+//         // //             tracks_processed += 1;
+//         // //         }
+//         // //         Err(e) => {
+//         // //             pb.println(format!("⚠ Failed to process: {}", e));
+//         // //         }
+//         // //     }
+//         // // }
 
-                    let _ = storage.lock().unwrap().insert_artist(artist_name, None);
-                    pb.println(format!("Processing: {}", track.file_details.path.display()));
-                    tracks_processed += 1;
-                }
-                Err(e) => {
-                    pb.println(format!("⚠ Failed to process: {}", e));
-                }
-            }
-        }
+//         // // 4) Finaliza la barra
+//         // pb.finish_with_message("Processing complete");
 
-        // 4) Finaliza la barra
-        pb.finish_with_message("Processing complete");
+//         // let elapsed = start_time.elapsed();
+//         // info!("Processing and storage took {} ms", elapsed.as_millis());
+//         // info!("{} tracks processed and saved", tracks_processed);
+//     }
+// }
 
-        let elapsed = start_time.elapsed();
-        info!("Processing and storage took {} ms", elapsed.as_millis());
-        info!("{} tracks processed and saved", tracks_processed);
-    }
-}
-
-impl Library for LibraryManager {}
+// impl Library for LibraryManager {}
 
 // use std::path::PathBuf;
 

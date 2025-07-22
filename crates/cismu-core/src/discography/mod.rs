@@ -4,6 +4,9 @@ pub mod rating;
 pub mod release;
 pub mod release_track;
 pub mod song;
+pub mod unresolved_track;
+
+pub use unresolved_track::UnresolvedTrack;
 
 // pub type SongId = u64;
 // pub type ReleaseId = u64;

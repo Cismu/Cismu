@@ -102,7 +102,7 @@ impl Default for LocalScannerConfig {
             .unwrap_or_else(|| std::env::current_dir().unwrap());
 
         Self {
-            include: vec!["/srv/storage/Music/".into(), include_dir],
+            include: vec![include_dir],
             exclude: vec![],
             extensions: HashMap::new(),
             sample_bytes: 3 * 1_048_576,
@@ -110,6 +110,7 @@ impl Default for LocalScannerConfig {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct LocalScanner {
     pub config: LocalScannerConfig,
 }
@@ -145,6 +146,10 @@ impl LocalScanner {
         let mut scan_result: ScanResult = HashMap::new();
         let mut bw_handles = Vec::new();
         for (dev_id, tracks) in tmp.into_iter() {
+            if tracks.is_empty() {
+                continue;
+            }
+
             let sample_path = tracks[0].path.clone();
             let bytes = self.config.sample_bytes;
             bw_handles.push(tokio::task::spawn_blocking(move || {

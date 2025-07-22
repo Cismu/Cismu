@@ -7,7 +7,7 @@ use thiserror::Error;
 use image::{ImageReader, codecs::jpeg::JpegEncoder};
 use sha2::{Digest, Sha256};
 
-use cismu_core::discography::release_track::Artwork;
+use cismu_core::discography::release::Artwork;
 use cismu_paths::PATHS;
 
 use tracing::error;
@@ -18,7 +18,11 @@ pub enum CoverError {
     InvalidDest,
 }
 
-pub fn picture_to_cover(data: &[u8], description: Option<&str>, base_cover_dir: PathBuf) -> Result<Artwork> {
+pub fn picture_to_cover(
+    data: &[u8],
+    description: Option<&str>,
+    base_cover_dir: PathBuf,
+) -> Result<Artwork> {
     let img = ImageReader::new(Cursor::new(data))
         .with_guessed_format()?
         .decode()?;
@@ -48,5 +52,7 @@ pub fn picture_to_cover(data: &[u8], description: Option<&str>, base_cover_dir: 
         path: dest,
         mime_type: "image/jpeg".into(),
         description: description.map(str::to_string),
+        credits: None,
+        hash: hash,
     })
 }
