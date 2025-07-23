@@ -1,4 +1,4 @@
-use crate::{metadata::LocalMetadataConfig, scanner::LocalScannerConfig, storage::LocalStorageConfig};
+use crate::{parsing::LocalMetadataConfig, scanning::LocalScannerConfig, storage::LocalStorageConfig};
 
 #[derive(Debug, Clone)]
 pub struct ConfigManager {

@@ -1,13 +1,14 @@
-mod analysis;
 mod covers;
-pub mod fingerprint;
 mod parser;
 
 use std::borrow::Cow;
 use std::{path::PathBuf, sync::Arc};
 
 use anyhow::Result;
+
 use cismu_core::discography::UnresolvedTrack;
+use cismu_paths::PATHS;
+
 use tracing::{error, warn};
 
 use lofty::file::TaggedFileExt;
@@ -22,10 +23,8 @@ use tokio::sync::{
 };
 use tokio::task::spawn_blocking;
 
-use cismu_paths::PATHS;
-
-use crate::metadata::covers::picture_to_cover;
-use crate::scanner::{ScanResult, TrackFile};
+use crate::parsing::covers::picture_to_cover;
+use crate::scanning::{ScanResult, TrackFile};
 
 #[derive(Debug, Clone)]
 pub struct LocalMetadata {

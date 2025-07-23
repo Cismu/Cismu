@@ -1,12 +1,12 @@
-pub mod acoustid;
+pub mod audio_analysis;
 pub mod config_manager;
-pub mod embedded;
-pub mod extensions;
+pub mod enrichment;
 pub mod library_manager;
-pub mod metadata;
-pub mod scanner;
+pub mod parsing;
+pub mod scanning;
 pub mod storage;
 
+pub use config_manager::ConfigManager;
 pub use library_manager::LibraryManager;
 
 // pub struct LibraryManager {

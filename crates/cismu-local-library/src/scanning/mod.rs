@@ -1,3 +1,5 @@
+mod extensions;
+
 use std::{
     collections::{HashMap, HashSet},
     ffi::OsStr,
@@ -16,7 +18,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex as AsyncMutex;
 use tracing::{Level, instrument, warn};
 
-use crate::extensions::{ExtensionConfig, SupportedExtension};
+use extensions::{ExtensionConfig, SupportedExtension};
 
 /// Métricas de dispositivo descubiertas dinámicamente.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -102,7 +104,7 @@ impl Default for LocalScannerConfig {
             .unwrap_or_else(|| std::env::current_dir().unwrap());
 
         Self {
-            include: vec!["/home/undead34/Music/Soulsheek/ALL OUT/".into()],
+            include: vec![include_dir],
             exclude: vec![],
             extensions: HashMap::new(),
             sample_bytes: 3 * 1_048_576,

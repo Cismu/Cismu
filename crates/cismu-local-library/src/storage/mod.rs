@@ -1,3 +1,5 @@
+mod embedded;
+
 use std::{
     path::PathBuf,
     sync::{Arc, Mutex},
@@ -12,7 +14,9 @@ use tracing::{info, trace};
 
 use cismu_paths::PATHS;
 
-use crate::{acoustid::AcoustidResult, embedded::migrations::runner};
+use embedded::migrations::runner;
+
+use crate::enrichment::acoustid::AcoustidResult;
 
 #[derive(Debug, Clone)]
 pub enum DatabaseConfig {

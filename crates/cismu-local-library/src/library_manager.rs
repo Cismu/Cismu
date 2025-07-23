@@ -1,15 +1,14 @@
+use std::{sync::Arc, time::Duration};
+
 use anyhow::Result;
-use futures::{StreamExt, stream::FuturesUnordered};
 use tracing::{error, info};
 
+use futures::{StreamExt, stream::FuturesUnordered};
+
 use crate::{
-    acoustid::AcoustidClient,
-    config_manager::ConfigManager,
-    metadata::{self, LocalMetadata},
-    scanner::LocalScanner,
-    storage::LocalStorage,
+    audio_analysis::fingerprint, config_manager::ConfigManager, enrichment::acoustid::AcoustidClient,
+    parsing::LocalMetadata, scanning::LocalScanner, storage::LocalStorage,
 };
-use std::{sync::Arc, time::Duration};
 
 #[derive(Debug, Clone)]
 pub struct LibraryManager {
@@ -70,7 +69,7 @@ impl LibraryManager {
                 let storage = self.storage.clone();
                 futs.push(tokio::spawn(async move {
                         info!("Generando fingerprint para: {}", path.display());
-                        match metadata::fingerprint::fingerprint_from_file(&path) {
+                        match fingerprint::fingerprint_from_file(&path) {
                             Ok(fp) => {
                                 if let Err(e) = storage.set_fingerprint_for_track(track_id, &fp) {
                                     error!(error = %e, "Error al guardar fingerprint para {}", path.display());
@@ -110,7 +109,7 @@ impl LibraryManager {
                 let storage = self.storage.clone();
                 let client = acoustid_client.clone();
                 futs.push(tokio::spawn(async move {
-                    if let Ok(fp) = metadata::fingerprint::fingerprint_from_file(&path) {
+                    if let Ok(fp) = fingerprint::fingerprint_from_file(&path) {
                         match client.lookup(&fp, duration.as_secs() as u32).await {
                             Ok(results) => {
                                 if let Some(best_result) = results.iter().max_by(|a, b| a.score.total_cmp(&b.score)) {
