@@ -1,5 +1,3 @@
-BEGIN;
-
 CREATE TABLE IF NOT EXISTS artists (
   id          INTEGER PRIMARY KEY,
   name        TEXT NOT NULL UNIQUE,
@@ -89,5 +87,3 @@ CREATE TABLE IF NOT EXISTS artworks (
 CREATE INDEX IF NOT EXISTS ix_songs_acoustid ON songs(acoustid);
 CREATE INDEX IF NOT EXISTS ix_rt_song        ON release_tracks(song_id);
 CREATE INDEX IF NOT EXISTS ix_rt_release     ON release_tracks(release_id);
-
-COMMIT;

@@ -102,7 +102,7 @@ impl Default for LocalScannerConfig {
             .unwrap_or_else(|| std::env::current_dir().unwrap());
 
         Self {
-            include: vec![include_dir],
+            include: vec!["/home/undead34/Music/Soulsheek/ALL OUT/".into()],
             exclude: vec![],
             extensions: HashMap::new(),
             sample_bytes: 3 * 1_048_576,

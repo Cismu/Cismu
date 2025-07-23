@@ -1,5 +1,5 @@
 use anyhow::Result;
-use tauri::Manager;
+use tauri::{Manager, State};
 
 use tracing::{debug, info, instrument, Level};
 use tracing_subscriber::prelude::*;
@@ -55,6 +55,8 @@ pub fn run() {
 }
 
 #[tauri::command]
-async fn scan() -> tauri::Result<()> {
+async fn scan(state: State<'_, LibraryManager>) -> tauri::Result<()> {
+    let library = state.inner();
+    library.scan().await?;
     Ok(())
 }

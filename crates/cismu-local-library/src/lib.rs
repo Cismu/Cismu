@@ -1,7 +1,7 @@
+pub mod acoustid;
 pub mod config_manager;
 pub mod embedded;
 pub mod extensions;
-pub mod fingerprint;
 pub mod library_manager;
 pub mod metadata;
 pub mod scanner;

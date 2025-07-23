@@ -145,7 +145,6 @@ impl CismuPaths {
         fs_utils::ensure_file(&self.settings_file)?;
         fs_utils::ensure_file(&self.ui_file)?;
         fs_utils::ensure_file(&self.keybindings_file)?;
-        fs_utils::ensure_file(&self.library_db)?;
         fs_utils::ensure_file(&self.playlists_db)?;
         fs_utils::ensure_file(&self.log_file)?;
 

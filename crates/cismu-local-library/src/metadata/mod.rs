@@ -1,5 +1,7 @@
 mod analysis;
 mod covers;
+pub mod fingerprint;
+mod parser;
 
 use std::borrow::Cow;
 use std::{path::PathBuf, sync::Arc};
@@ -137,30 +139,25 @@ impl LocalMetadata {
         if let Some(tag) = tagged.primary_tag().or_else(|| tagged.first_tag()) {
             track.title = tag.title().map(Cow::into_owned);
             track.album = tag.album().map(Cow::into_owned);
-            track.album_artist = tag.get_string(&ItemKey::AlbumArtist).map(str::to_string);
             track.track_number = tag.track().and_then(|n| n.try_into().ok());
             track.disc_number = tag.disk().and_then(|n| n.try_into().ok());
             track.genre = tag.genre().map(Cow::into_owned).map(|g| vec![g]);
 
             if let Some(performers_str) = tag.artist().map(Cow::into_owned) {
-                track.performers = performers_str
-                    .split(&['/', ';', ','])
-                    .map(|a| a.trim().to_string())
-                    .collect();
+                let (main, featured) = parser::parse_performers(&performers_str);
+                track.performers = main;
+                track.featured_artists = featured;
+            }
+
+            if let Some(album_artists_str) = tag.get_string(&ItemKey::AlbumArtist) {
+                track.album_artists = parser::get_raw_credits(album_artists_str);
             }
 
             if let Some(composers_str) = tag.get_string(&ItemKey::Composer) {
-                track.composers = composers_str
-                    .split(&['/', ';', ','])
-                    .map(|c| c.trim().to_string())
-                    .collect();
+                track.composers = parser::get_raw_credits(composers_str);
             }
-
             if let Some(producers_str) = tag.get_string(&ItemKey::Producer) {
-                track.producers = producers_str
-                    .split(&['/', ';', ','])
-                    .map(|p| p.trim().to_string())
-                    .collect();
+                track.producers = parser::get_raw_credits(producers_str);
             }
 
             let mut arts = Vec::new();
