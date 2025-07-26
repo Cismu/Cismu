@@ -1,22 +1,25 @@
 mod embedded;
 
 use std::{
+    collections::HashMap,
     path::PathBuf,
     sync::{Arc, Mutex},
 };
 
 use anyhow::Result;
 use cismu_core::discography::{
-    UnresolvedTrack, artist::ArtistId, release::ReleaseId, release_track::ReleaseTrackId, song::SongId,
+    artist::{Artist, ArtistId},
+    release::{Release, ReleaseId, ReleaseType},
+    song::SongId,
 };
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::{Connection, OptionalExtension, Transaction, params};
 use tracing::{info, trace};
 
 use cismu_paths::PATHS;
 
 use embedded::migrations::runner;
 
-use crate::enrichment::acoustid::AcoustidResult;
+use crate::parsing::UnresolvedTrack;
 
 #[derive(Debug, Clone)]
 pub enum DatabaseConfig {
@@ -83,302 +86,446 @@ impl LocalStorage {
 }
 
 impl LocalStorage {
+    /// Orquesta el proceso completo para resolver una pista no resuelta.
     pub fn resolve_unresolved_track(&self, track: UnresolvedTrack) -> Result<()> {
         let mut conn = self.conn.lock().unwrap();
         let tx = conn.transaction()?;
 
-        let performer_ids = Self::find_or_create_artists(&tx, &track.performers)?;
-        let featured_artist_ids = Self::find_or_create_artists(&tx, &track.featured_artists)?;
-        let composer_ids = Self::find_or_create_artists(&tx, &track.composers)?;
-        let producer_ids = Self::find_or_create_artists(&tx, &track.producers)?;
-        let album_artist_ids = Self::find_or_create_artists(&tx, &track.album_artists)?;
+        // 1. Resolver todos los artistas. Pura lógica de negocio + llamada a queries.
+        let artist_map = self.resolve_all_artists(&tx, &track)?;
 
-        let release_id = Self::find_or_create_release(
-            &tx,
-            track.album.as_deref().unwrap_or("Unknown Album"),
-            &album_artist_ids,
-        )?;
+        // 2. Resolver el lanzamiento. Pura lógica de negocio + llamada a queries.
+        let release_id = self.resolve_release(&tx, &track, &artist_map)?;
 
-        let song_id = Self::find_or_create_song(
-            &tx,
-            track.title.as_deref().unwrap_or("Unknown Title"),
-            &performer_ids,
-            &featured_artist_ids,
-            &composer_ids,
-            &producer_ids,
-        )?;
+        // 3. Resolver la canción abstracta
+        let song_id = self.resolve_song(&tx, &track, &artist_map)?;
 
-        let release_track_id = Self::create_release_track(&tx, song_id, release_id, &track)?;
-
-        tx.execute(
-            "INSERT OR IGNORE INTO fingerprint_queue (release_track_id) VALUES (?1)",
-            params![release_track_id],
-        )?;
+        // 4. Insertar la pista física que une todo (PASO FINAL)
+        queries::insert_release_track(&tx, &track, song_id, release_id)?;
 
         tx.commit()?;
-
-        info!("Pista resuelta y guardada: {}", track.path.display());
-
         Ok(())
     }
 
-    /// Busca artistas por nombre; si no existen, los crea. Devuelve sus IDs.
-    fn find_or_create_artists(
-        tx: &rusqlite::Transaction,
-        artist_names: &[String],
-    ) -> Result<Vec<ArtistId>> {
-        let mut artist_ids = Vec::new();
-        let mut stmt_select = tx.prepare("SELECT id FROM artists WHERE name = ?1")?;
-        let mut stmt_insert = tx.prepare("INSERT INTO artists (name) VALUES (?1)")?;
+    /// Prepara la lista de nombres de artistas y llama al query correspondiente.
+    fn resolve_all_artists(
+        &self,
+        tx: &Transaction,
+        track: &UnresolvedTrack,
+    ) -> Result<HashMap<String, ArtistId>> {
+        let mut all_names: Vec<String> = track
+            .release_artists
+            .iter()
+            .chain(track.track_performers.iter())
+            .chain(track.track_featured.iter())
+            .chain(track.track_composers.iter())
+            .chain(track.track_producers.iter())
+            .cloned()
+            .collect();
 
-        for name in artist_names.iter().filter(|n| !n.is_empty()) {
-            if let Some(id) = stmt_select.query_row([name], |row| row.get(0)).optional()? {
+        all_names.sort();
+        all_names.dedup();
+        all_names.retain(|n| !n.is_empty()); // Asegurarse de no procesar nombres vacíos
+
+        let ids = queries::find_or_create_artists(tx, &all_names)?;
+        let map = all_names.into_iter().zip(ids.into_iter()).collect();
+        Ok(map)
+    }
+
+    /// Prepara los datos del lanzamiento y coordina la búsqueda o creación en la base de datos.
+    fn resolve_release(
+        &self,
+        tx: &Transaction,
+        track: &UnresolvedTrack,
+        artist_map: &HashMap<String, ArtistId>,
+    ) -> Result<ReleaseId> {
+        let release_title = track.release_title.as_deref().unwrap_or("Unknown Release");
+
+        let target_artist_ids: Vec<ArtistId> = track
+            .release_artists
+            .iter()
+            .filter_map(|name| artist_map.get(name).copied())
+            .collect();
+
+        // Llama a la función de búsqueda en la capa de queries.
+        if let Some(id) = queries::find_release_by_artists(tx, release_title, &target_artist_ids)? {
+            return Ok(id);
+        }
+
+        // Si no se encontró, preparamos los datos para la creación.
+        let release_types = track
+            .release_type
+            .as_deref()
+            .map(ReleaseType::parse)
+            .unwrap_or_default();
+        let format_string = release_types
+            .iter()
+            .map(|rt| format!("{:?}", rt))
+            .collect::<Vec<_>>()
+            .join(";");
+        let final_format_string = if format_string.is_empty() {
+            "Other".to_string()
+        } else {
+            format_string
+        };
+
+        // Llama a la función de creación en la capa de queries.
+        let release_id = queries::create_new_release(
+            tx,
+            release_title,
+            &final_format_string,
+            track.release_date.as_deref(),
+            &target_artist_ids,
+        )?;
+        Ok(release_id)
+    }
+
+    /// Prepara los datos de la canción y coordina la búsqueda o creación en la base de datos.
+    fn resolve_song(
+        &self,
+        tx: &Transaction,
+        track: &UnresolvedTrack,
+        artist_map: &HashMap<String, ArtistId>,
+    ) -> Result<SongId> {
+        let track_title = match track.track_title.as_deref() {
+            Some(title) if !title.is_empty() => title,
+            _ => return Err(anyhow::anyhow!("La pista no tiene título")), // Una canción abstracta debe tener título
+        };
+
+        let performer_ids: Vec<ArtistId> = track
+            .track_performers
+            .iter()
+            .filter_map(|name| artist_map.get(name).copied())
+            .collect();
+
+        // Llama a la función de búsqueda en la capa de queries.
+        if let Some(id) = queries::find_song_by_performers(tx, track_title, &performer_ids)? {
+            return Ok(id);
+        }
+
+        // Si no se encontró, preparamos todos los créditos para la creación.
+        let featured_ids: Vec<ArtistId> = track
+            .track_featured
+            .iter()
+            .filter_map(|n| artist_map.get(n).copied())
+            .collect();
+        let composer_ids: Vec<ArtistId> = track
+            .track_composers
+            .iter()
+            .filter_map(|n| artist_map.get(n).copied())
+            .collect();
+        let producer_ids: Vec<ArtistId> = track
+            .track_producers
+            .iter()
+            .filter_map(|n| artist_map.get(n).copied())
+            .collect();
+
+        // Llama a la función de creación en la capa de queries.
+        let song_id = queries::create_new_song(
+            tx,
+            track_title,
+            &performer_ids,
+            &featured_ids,
+            &composer_ids,
+            &producer_ids,
+        )?;
+        Ok(song_id)
+    }
+}
+
+impl LocalStorage {
+    /// Devuelve una lista de todos los artistas en la biblioteca.
+    pub fn get_all_artists(&self) -> Result<Vec<Artist>> {
+        let conn = self.conn.lock().unwrap();
+        queries::get_all_artists(&conn)
+    }
+
+    /// Devuelve una lista de todos los lanzamientos de un artista específico.
+    pub fn get_releases_for_artist(&self, artist_id: ArtistId) -> Result<Vec<Release>> {
+        let conn = self.conn.lock().unwrap();
+        queries::get_releases_for_artist(&conn, artist_id)
+    }
+
+    /// Devuelve los detalles completos de un lanzamiento, incluyendo su lista de pistas.
+    pub fn get_release_details(&self, release_id: ReleaseId) -> Result<Option<Release>> {
+        let conn = self.conn.lock().unwrap();
+        queries::get_release_details(&conn, release_id)
+    }
+}
+
+mod queries {
+    use cismu_core::discography::release_track::ReleaseTrackId;
+
+    use super::*;
+
+    pub fn find_or_create_artists(tx: &Transaction, artist_names: &[String]) -> rusqlite::Result<Vec<ArtistId>> {
+        let mut stmt_select = tx.prepare(
+            "SELECT id
+               FROM artists
+              WHERE TRIM(name) = TRIM(?1) COLLATE NOCASE",
+        )?;
+
+        let mut stmt_insert = tx.prepare("INSERT INTO artists (name) VALUES (?1)")?;
+        let mut artist_ids = Vec::with_capacity(artist_names.len());
+
+        for name in artist_names {
+            if let Some(id) = stmt_select.query_row([name], |row| row.get::<usize, ArtistId>(0)).optional()? {
                 artist_ids.push(id);
             } else {
                 stmt_insert.execute([name])?;
                 artist_ids.push(tx.last_insert_rowid() as ArtistId);
             }
         }
+
         Ok(artist_ids)
     }
 
-    /// Busca un release por título y artistas principales; si no existe, lo crea.
-    fn find_or_create_release(
-        tx: &rusqlite::Transaction,
+    pub fn find_release_by_artists(
+        tx: &Transaction,
         title: &str,
-        album_artist_ids: &[ArtistId],
-    ) -> Result<ReleaseId> {
-        // ReleaseId
-        // Para identificar un release, podemos usar su título y su primer artista principal.
-        // Es una simplificación, pero efectiva para la mayoría de los casos.
-        if let Some(first_artist_id) = album_artist_ids.first() {
-            if let Some(id) = tx
-                .query_row(
-                    "SELECT r.id FROM releases r
-                     JOIN release_main_artists rma ON r.id = rma.release_id
-                     WHERE r.title = ?1 AND rma.artist_id = ?2",
-                    params![title, first_artist_id],
-                    |row| row.get(0),
-                )
-                .optional()?
-            {
-                return Ok(id);
+        target_artists: &[ArtistId],
+    ) -> Result<Option<ReleaseId>> {
+        if target_artists.is_empty() {
+            return Ok(None);
+        }
+
+        let mut stmt_find_releases = tx.prepare("SELECT id FROM releases WHERE title = ?1")?;
+        let candidate_ids: Vec<ReleaseId> = stmt_find_releases
+            .query_map([title], |row| row.get(0))?
+            .collect::<Result<_, _>>()?;
+
+        let mut stmt_get_artists =
+            tx.prepare("SELECT artist_id FROM release_main_artists WHERE release_id = ?1")?;
+
+        for release_id in candidate_ids {
+            let mut db_artists: Vec<ArtistId> = stmt_get_artists
+                .query_map([release_id], |row| row.get(0))?
+                .collect::<Result<_, _>>()?;
+
+            let mut target_artists_sorted = target_artists.to_vec();
+            target_artists_sorted.sort_unstable();
+            db_artists.sort_unstable();
+
+            if target_artists_sorted == db_artists {
+                return Ok(Some(release_id));
             }
         }
 
-        // Si no se encontró, se crea un nuevo release
+        Ok(None)
+    }
+
+    pub fn create_new_release(
+        tx: &Transaction,
+        title: &str,
+        format: &str,
+        date: Option<&str>,
+        artists: &[ArtistId],
+    ) -> Result<ReleaseId> {
         tx.execute(
-            "INSERT INTO releases (title, format) VALUES (?1, ?2)",
-            params![title, "Album"],
+            "INSERT INTO releases (title, format, release_date) VALUES (?1, ?2, ?3)",
+            params![title, format, date],
         )?;
         let release_id = tx.last_insert_rowid() as ReleaseId;
 
-        // Vinculamos todos los artistas principales del álbum
-        let mut stmt_artists =
+        let mut stmt_link_artist =
             tx.prepare("INSERT INTO release_main_artists (release_id, artist_id) VALUES (?1, ?2)")?;
-        for artist_id in album_artist_ids {
-            stmt_artists.execute(params![release_id, artist_id])?;
+        for artist_id in artists {
+            stmt_link_artist.execute(params![release_id, artist_id])?;
         }
 
         Ok(release_id)
     }
 
-    /// Busca una canción por título e intérprete; si no existe, la crea y añade sus créditos.
-    fn find_or_create_song(
-        tx: &rusqlite::Transaction,
+    pub fn find_song_by_performers(
+        tx: &Transaction,
         title: &str,
-        performer_ids: &[ArtistId],
-        featured_ids: &[ArtistId],
-        composer_ids: &[ArtistId],
-        producer_ids: &[ArtistId],
-    ) -> Result<SongId> {
-        // SongId
-        if let Some(first_performer_id) = performer_ids.first() {
-            if let Some(id) = tx
-                .query_row(
-                    "SELECT s.id FROM songs s
-                     JOIN song_credits sc ON s.id = sc.song_id
-                     WHERE s.title = ?1 AND sc.artist_id = ?2 AND sc.role = 'performer'",
-                    params![title, first_performer_id],
-                    |row| row.get(0),
-                )
-                .optional()?
-            {
-                return Ok(id);
+        target_performers: &[ArtistId],
+    ) -> Result<Option<SongId>> {
+        if target_performers.is_empty() {
+            return Ok(None);
+        }
+        // Lógica para encontrar una canción por título y conjunto exacto de intérpretes...
+        // Es muy similar a `find_release_by_artists`, pero buscando en `songs` y `song_credits`.
+        let mut stmt_find_songs = tx.prepare("SELECT id FROM songs WHERE title = ?1")?;
+        let candidates: Vec<SongId> = stmt_find_songs
+            .query_map([title], |row| row.get(0))?
+            .collect::<Result<_, _>>()?;
+
+        let mut stmt_get_performers =
+            tx.prepare("SELECT artist_id FROM song_credits WHERE song_id = ?1 AND role = 'performer'")?;
+        for song_id in candidates {
+            let mut db_performers: Vec<ArtistId> = stmt_get_performers
+                .query_map([song_id], |row| row.get(0))?
+                .collect::<Result<_, _>>()?;
+
+            let mut target_performers_sorted = target_performers.to_vec();
+            target_performers_sorted.sort_unstable();
+            db_performers.sort_unstable();
+
+            if target_performers_sorted == db_performers {
+                return Ok(Some(song_id));
             }
         }
 
+        Ok(None)
+    }
+
+    pub fn create_new_song(
+        tx: &Transaction,
+        title: &str,
+        performers: &[ArtistId],
+        featured: &[ArtistId],
+        composers: &[ArtistId],
+        producers: &[ArtistId],
+    ) -> Result<SongId> {
         tx.execute("INSERT INTO songs (title) VALUES (?1)", [title])?;
         let song_id = tx.last_insert_rowid() as SongId;
 
         let mut stmt =
             tx.prepare("INSERT INTO song_credits (song_id, artist_id, role) VALUES (?1, ?2, ?3)")?;
-        for id in performer_ids {
-            stmt.execute(params![song_id, id, "performer"])?;
+
+        for artist_id in performers {
+            stmt.execute(params![song_id, artist_id, "performer"])?;
         }
-        for id in featured_ids {
-            stmt.execute(params![song_id, id, "featured"])?;
+        for artist_id in featured {
+            stmt.execute(params![song_id, artist_id, "featured"])?;
         }
-        for id in composer_ids {
-            stmt.execute(params![song_id, id, "composer"])?;
+        for artist_id in composers {
+            stmt.execute(params![song_id, artist_id, "composer"])?;
         }
-        for id in producer_ids {
-            stmt.execute(params![song_id, id, "producer"])?;
+        for artist_id in producers {
+            stmt.execute(params![song_id, artist_id, "producer"])?;
         }
+
         Ok(song_id)
     }
 
-    /// Inserta una nueva fila en la tabla `release_tracks`.
-    fn create_release_track(
-        tx: &rusqlite::Transaction,
+    pub fn insert_release_track(
+        tx: &Transaction,
+        track: &UnresolvedTrack,
         song_id: SongId,
         release_id: ReleaseId,
-        track_data: &UnresolvedTrack,
-    ) -> Result<ReleaseTrackId> {
+    ) -> Result<()> {
         tx.execute(
-            "INSERT INTO release_tracks (
-                    song_id, release_id, track_number, disc_number, path,
-                    size_bytes, modified_timestamp, duration_seconds, bitrate_kbps,
-                    sample_rate_hz, channels
-                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            "INSERT OR REPLACE INTO release_tracks (song_id, release_id, track_number, disc_number, path, size_bytes, modified_timestamp, duration_seconds, bitrate_kbps, sample_rate_hz, channels)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
             params![
                 song_id,
                 release_id,
-                track_data.track_number.unwrap_or(0),
-                track_data.disc_number.unwrap_or(0),
-                track_data.path.to_str(),
-                track_data.file_size,
-                track_data.last_modified,
-                track_data.duration.as_secs_f64(),
-                track_data.bitrate_kbps,
-                track_data.sample_rate,
-                track_data.channels,
-            ],
+                track.track_number,
+                track.disc_number,
+                track.path.to_str(),
+                track.file_size,
+                track.last_modified,
+                track.duration.as_secs_f64(),
+                track.bitrate_kbps,
+                track.sample_rate,
+                track.channels,
+            ]
         )?;
-
-        Ok(tx.last_insert_rowid() as ReleaseTrackId)
-    }
-
-    /// Obtiene una lista de IDs y rutas de la cola de fingerprinting.
-    pub fn get_fingerprint_queue(&self, limit: u32) -> Result<Vec<(ReleaseTrackId, PathBuf)>> {
-        let conn = self.conn.lock().unwrap();
-        let mut stmt = conn.prepare(
-            "SELECT fq.release_track_id, rt.path FROM fingerprint_queue fq
-             JOIN release_tracks rt ON fq.release_track_id = rt.id
-             LIMIT ?1",
-        )?;
-
-        let tracks = stmt
-            .query_map([limit], |row| {
-                let path_str: String = row.get(1)?;
-                let path_buf = PathBuf::from(path_str);
-
-                Ok((row.get(0)?, path_buf))
-            })?
-            .collect::<Result<Vec<(ReleaseTrackId, PathBuf)>, _>>()?;
-
-        Ok(tracks)
-    }
-
-    /// Actualiza un ReleaseTrack con su fingerprint y lo saca de la cola.
-    pub fn set_fingerprint_for_track(&self, track_id: ReleaseTrackId, fingerprint: &str) -> Result<()> {
-        let mut conn = self.conn.lock().unwrap();
-        let tx = conn.transaction()?;
-
-        tx.execute(
-            "UPDATE release_tracks SET fingerprint = ?1 WHERE id = ?2",
-            params![fingerprint, track_id],
-        )?;
-        tx.execute(
-            "DELETE FROM fingerprint_queue WHERE release_track_id = ?1",
-            params![track_id],
-        )?;
-
-        tx.commit()?;
         Ok(())
     }
-}
 
-impl LocalStorage {
-    /// Actualiza una canción con su AcoustID verificado y fusiona si es un duplicado.
-    pub fn update_track_with_acoustid(
-        &self,
-        track_id_to_update: ReleaseTrackId,
-        best_result: &AcoustidResult,
-    ) -> Result<()> {
-        let mut conn = self.conn.lock().unwrap();
-        let tx = conn.transaction()?;
+    /// Consulta la base de datos para obtener todos los artistas.
+    pub fn get_all_artists(conn: &Connection) -> Result<Vec<Artist>> {
+        let mut stmt = conn.prepare("SELECT id, name FROM artists ORDER BY name COLLATE NOCASE")?;
 
-        let acoustid = &best_result.id;
-
-        // 1. ¿Ya existe una canción "maestra" con este AcoustID?
-        let master_song_id: Option<SongId> = tx
-            .query_row("SELECT id FROM songs WHERE acoustid = ?1", [acoustid], |row| {
-                row.get(0)
+        let artists_iter = stmt.query_map([], |row| {
+            Ok(Artist {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                ..Default::default()
             })
-            .optional()?;
+        })?;
 
-        // 2. Obtén el song_id del track que estamos procesando
-        let current_song_id: SongId = tx.query_row(
-            "SELECT song_id FROM release_tracks WHERE id = ?1",
-            [track_id_to_update],
-            |row| row.get(0),
-        )?;
-
-        if let Some(master_id) = master_song_id {
-            if master_id != current_song_id {
-                // ¡Duplicado encontrado! Fusionamos.
-                info!(
-                    "Duplicado encontrado. Fusionando song_id {} con {}",
-                    current_song_id, master_id
-                );
-                // Reasignamos este track a la canción maestra.
-                tx.execute(
-                    "UPDATE release_tracks SET song_id = ?1 WHERE id = ?2",
-                    params![master_id, track_id_to_update],
-                )?;
-                // Borramos la canción duplicada si ya no tiene más tracks.
-                // (Una lógica más avanzada podría comprobar esto antes de borrar)
-                tx.execute("DELETE FROM songs WHERE id = ?1", [current_song_id])?;
-            }
-        } else {
-            // No es un duplicado, simplemente actualizamos la canción actual con su AcoustID.
-            tx.execute(
-                "UPDATE songs SET acoustid = ?1 WHERE id = ?2",
-                params![acoustid, current_song_id],
-            )?;
+        let mut artists = Vec::new();
+        for artist in artists_iter {
+            artists.push(artist?);
         }
-
-        tx.commit()?;
-        Ok(())
+        Ok(artists)
     }
 
-    pub fn get_verification_queue(
-        &self,
-        limit: u32,
-    ) -> Result<Vec<(ReleaseTrackId, PathBuf, std::time::Duration)>> {
-        let conn = self.conn.lock().unwrap();
+    /// Consulta los lanzamientos asociados a un `ArtistId`.
+    pub fn get_releases_for_artist(conn: &Connection, artist_id: ArtistId) -> Result<Vec<Release>> {
         let mut stmt = conn.prepare(
-            "SELECT rt.id, rt.path, rt.duration_seconds FROM release_tracks rt
-             JOIN songs s ON rt.song_id = s.id
-             WHERE rt.fingerprint IS NOT NULL AND s.acoustid IS NULL
-             LIMIT ?1",
+            "SELECT r.id, r.title, r.release_date FROM releases r
+             JOIN release_main_artists rma ON r.id = rma.release_id
+             WHERE rma.artist_id = ?1
+             ORDER BY r.release_date DESC",
         )?;
 
-        let tracks = stmt
-            .query_map([limit], |row| {
-                let path_str: String = row.get(1)?;
-                let path_buf = PathBuf::from(path_str);
-                let duration_secs: f64 = row.get(2)?;
+        let releases_iter = stmt.query_map([artist_id], |row| {
+            Ok(Release {
+                id: row.get(0)?,
+                title: row.get(1)?,
+                release_date: row.get(2)?,
+                // En esta vista simplificada, no cargamos toda la lista de pistas o artistas.
+                ..Default::default()
+            })
+        })?;
 
-                Ok((
-                    row.get(0)?,
-                    path_buf,
-                    std::time::Duration::from_secs_f64(duration_secs),
-                ))
-            })?
-            .collect::<Result<Vec<_>, _>>()?;
+        let mut releases = Vec::new();
+        for release in releases_iter {
+            releases.push(release?);
+        }
+        Ok(releases)
+    }
 
-        Ok(tracks)
+    /// Carga un `Release` completo desde la base de datos, incluyendo artistas y pistas.
+    pub fn get_release_details(conn: &Connection, release_id: ReleaseId) -> Result<Option<Release>> {
+        // 1. Obtener los datos base del release
+        let mut release: Release = match conn
+            .query_row(
+                "SELECT id, title, format, release_date FROM releases WHERE id = ?1",
+                [release_id],
+                |row| {
+                    Ok(Release {
+                        id: row.get(0)?,
+                        title: row.get(1)?,
+                        // Usamos la función de parseo que ya tienes en tu enum ReleaseType
+                        release_type: ReleaseType::parse(&row.get::<_, String>(2)?),
+                        release_date: row.get(3)?,
+                        ..Default::default()
+                    })
+                },
+            )
+            .optional()?
+        {
+            Some(r) => r,
+            None => return Ok(None), // Si no se encuentra el release, devuelve None
+        };
+
+        // 2. Cargar los artistas principales del release
+        let mut stmt_artists =
+            conn.prepare("SELECT artist_id FROM release_main_artists WHERE release_id = ?1")?;
+        let artist_ids = stmt_artists
+            .query_map([release_id], |row| row.get(0))?
+            .collect::<Result<Vec<ArtistId>, _>>()?;
+        release.main_artist_ids = artist_ids;
+
+        // 3. Cargar las pistas del release (uniendo con songs para obtener el título)
+        let mut stmt_tracks = conn.prepare(
+            "SELECT rt.id, rt.song_id, s.title, rt.track_number, rt.disc_number, rt.duration_seconds, rt.path
+             FROM release_tracks rt
+             JOIN songs s ON rt.song_id = s.id
+             WHERE rt.release_id = ?1
+             ORDER BY rt.disc_number, rt.track_number",
+        )?;
+
+        // Nota: Aquí estamos creando una estructura simplificada de la pista para la UI.
+        // Deberías definir un struct para esto, pero por ahora lo hacemos anónimo.
+        let tracks_iter = stmt_tracks.query_map([release_id], |row| {
+            // Aquí deberías construir tu struct `ReleaseTrack` completo.
+            // Por simplicidad, solo mostramos cómo se obtienen los datos.
+            let id: ReleaseTrackId = row.get(0)?;
+            // ... cargar el resto de los datos en tu struct `ReleaseTrack` ...
+            Ok(id) // Placeholder
+        })?;
+
+        release.release_tracks = tracks_iter.collect::<Result<Vec<ReleaseTrackId>, _>>()?;
+
+        // 4. (Opcional) Cargar artworks, géneros, etc. de la misma forma.
+
+        Ok(Some(release))
     }
 }

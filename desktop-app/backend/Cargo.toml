@@ -19,18 +19,20 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = ["isolation", "config-json5"] }
 
 [dependencies]
-tauri = { version = "2", features = ["isolation", "config-json5"] }
+tauri = { version = "2.0", features = ["isolation", "config-json5"] }
 tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 cismu-core = { version = "0.1.0", path = "../../crates/cismu-core" }
-tauri-plugin-devtools = "2.0.0"
 log = "0.4.27"
 tracing = "0.1.41"
 anyhow = "1.0.98"
 cismu-local-library = { version = "0.1.0", path = "../../crates/cismu-local-library" }
-tracing-subscriber = "0.3.19"
+tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 cismu-paths = { version = "0.1.0", path = "../../crates/cismu-paths" }
+tauri-specta = { version = "=2.0.0-rc.21", features = ["derive", "typescript"] }
+specta-typescript = "0.0.9"
+specta = "=2.0.0-rc.22"
 
 [profile.dev]
 incremental = true # Compile your binary in smaller steps.

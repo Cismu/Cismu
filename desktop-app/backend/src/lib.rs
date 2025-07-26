@@ -1,5 +1,9 @@
 use anyhow::Result;
+use cismu_core::discography::artist::{Artist, ArtistId};
+use cismu_core::discography::release::{Release, ReleaseId};
+use specta_typescript::Typescript;
 use tauri::{Manager, State};
+use tauri_specta::Builder;
 
 use tracing::{debug, info, instrument, Level};
 use tracing_subscriber::prelude::*;
@@ -46,10 +50,24 @@ pub fn run() {
 
     tracing_subscriber::registry().with(filter).with(fmt_layer).init();
 
+    let builder = Builder::<tauri::Wry>::new();
+
+    #[cfg(debug_assertions)] // <- Only export on non-release builds
+    builder
+        .typ::<Release>()
+        .typ::<Artist>()
+        .export(Typescript::default(), "../../packages/bindings.ts")
+        .expect("Failed to export typescript bindings");
+
     tauri::Builder::default()
         .setup(|app| setup(app).map_err(Into::into))
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![scan])
+        .invoke_handler(tauri::generate_handler![
+            scan,
+            get_all_artists,
+            get_releases_for_artist,
+            get_release_details
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
@@ -59,4 +77,28 @@ async fn scan(state: State<'_, LibraryManager>) -> tauri::Result<()> {
     let library = state.inner();
     library.scan().await?;
     Ok(())
+}
+
+#[tauri::command]
+fn get_all_artists(state: State<'_, LibraryManager>) -> tauri::Result<Vec<Artist>> {
+    let library = state.inner();
+    Ok(library.get_all_artists()?)
+}
+
+#[tauri::command]
+fn get_releases_for_artist(
+    state: State<'_, LibraryManager>,
+    artist_id: ArtistId,
+) -> tauri::Result<Vec<Release>> {
+    let library = state.inner();
+    Ok(library.get_releases_for_artist(artist_id)?)
+}
+
+#[tauri::command]
+fn get_release_details(
+    state: State<'_, LibraryManager>,
+    release_id: ReleaseId,
+) -> tauri::Result<Option<Release>> {
+    let library = state.inner();
+    Ok(library.get_release_details(release_id)?)
 }

@@ -17,7 +17,6 @@ pub struct Recording {
 
 #[derive(Debug, Deserialize)]
 struct AcoustidResponse {
-    status: String,
     results: Vec<AcoustidResult>,
 }
 

@@ -1,3 +1,3 @@
 use refinery::embed_migrations;
 
-embed_migrations!("database");
+embed_migrations!("database/migrations");

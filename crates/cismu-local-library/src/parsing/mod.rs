@@ -1,12 +1,11 @@
 mod covers;
-mod parser;
+mod unresolved_track;
 
 use std::borrow::Cow;
 use std::{path::PathBuf, sync::Arc};
 
 use anyhow::Result;
 
-use cismu_core::discography::UnresolvedTrack;
 use cismu_paths::PATHS;
 
 use tracing::{error, warn};
@@ -17,6 +16,8 @@ use lofty::{file::AudioFile, probe::Probe};
 
 use futures::stream::FuturesUnordered;
 use futures::{StreamExt, stream};
+use once_cell::sync::Lazy;
+use regex::Regex;
 use tokio::sync::{
     Semaphore,
     mpsc::{self, Receiver, Sender},
@@ -25,6 +26,21 @@ use tokio::task::spawn_blocking;
 
 use crate::parsing::covers::picture_to_cover;
 use crate::scanning::{ScanResult, TrackFile};
+pub use unresolved_track::UnresolvedTrack;
+
+static COMPLEX_SEPARATORS_REGEX: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?i)(\s*f(ea)?t(\.)?\s+)|(\s*([&×,\|])\s*)|(\s/\s)|(・)").unwrap());
+
+/// Parsea una cadena de artista compleja en una lista de nombres limpios.
+fn parse_artist_string(raw_artist: &str) -> Vec<String> {
+    let standardized = COMPLEX_SEPARATORS_REGEX.replace_all(raw_artist, ";");
+
+    standardized
+        .split(';')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect()
+}
 
 #[derive(Debug, Clone)]
 pub struct LocalMetadata {
@@ -92,8 +108,7 @@ impl LocalMetadata {
             async move {
                 let _permit = sem.acquire_owned().await?;
 
-                let result =
-                    spawn_blocking(move || Self::decode_single_audio(track, cfg.clone())).await??;
+                let result = spawn_blocking(move || Self::decode_single_audio(track, cfg.clone())).await??;
 
                 Ok::<_, anyhow::Error>(result)
             }
@@ -136,29 +151,61 @@ impl LocalMetadata {
 
         // --- Metadatos y Créditos ---
         if let Some(tag) = tagged.primary_tag().or_else(|| tagged.first_tag()) {
-            track.title = tag.title().map(Cow::into_owned);
-            track.album = tag.album().map(Cow::into_owned);
-            track.track_number = tag.track().and_then(|n| n.try_into().ok());
-            track.disc_number = tag.disk().and_then(|n| n.try_into().ok());
-            track.genre = tag.genre().map(Cow::into_owned).map(|g| vec![g]);
+            // --- Metadatos de la Pista y Lanzamiento ---
+            track.track_title = tag.title().map(Cow::into_owned);
+            track.release_title = tag.album().map(Cow::into_owned);
+            track.track_number = tag.track();
+            track.disc_number = tag.disk();
 
-            if let Some(performers_str) = tag.artist().map(Cow::into_owned) {
-                let (main, featured) = parser::parse_performers(&performers_str);
-                track.performers = main;
-                track.featured_artists = featured;
+            // Mapea campos adicionales usando ItemKey
+            track.release_date = tag
+                .get_string(&ItemKey::OriginalReleaseDate)
+                .or_else(|| tag.get_string(&ItemKey::RecordingDate))
+                .map(str::to_string);
+            track.record_label = tag
+                .get_string(&ItemKey::Publisher)
+                .or_else(|| tag.get_string(&ItemKey::Label))
+                .map(str::to_string);
+            track.catalog_number = tag.get_string(&ItemKey::CatalogNumber).map(str::to_string);
+            track.release_type = tag
+                .get_string(&ItemKey::Unknown("RELEASETYPE".into()))
+                .map(str::to_string);
+
+            // Maneja géneros que pueden venir separados por '/' o ';' o ','
+            track.genres = tag.genre().map(|s| {
+                s.split(|c| c == '/' || c == ';' || c == ',')
+                    .map(|part| part.trim().to_string())
+                    .collect()
+            });
+
+            // --- Créditos ---
+            if let Some(s) = tag.artist().map(Cow::into_owned) {
+                track.track_performers = parse_artist_string(&s);
+            }
+            if let Some(s) = tag.get_string(&ItemKey::AlbumArtist) {
+                track.release_artists = parse_artist_string(s);
+            }
+            if let Some(s) = tag.get_string(&ItemKey::Composer) {
+                track.track_composers = parse_artist_string(s);
+            }
+            if let Some(s) = tag.get_string(&ItemKey::Producer) {
+                track.track_producers = parse_artist_string(s);
             }
 
-            if let Some(album_artists_str) = tag.get_string(&ItemKey::AlbumArtist) {
-                track.album_artists = parser::get_raw_credits(album_artists_str);
+            // --- Re-clasificación de Artistas Invitados (Featured) ---
+            if track.track_performers.len() > 1 {
+                if let Some(original_artist_str) = tag.artist() {
+                    let lower_artist = original_artist_str.to_lowercase();
+                    // Usamos `contains` que es más flexible que buscar separadores con espacios.
+                    if lower_artist.contains(" ft") || lower_artist.contains(" feat") {
+                        let all_performers = track.track_performers.clone();
+                        track.track_performers = vec![all_performers[0].clone()];
+                        track.track_featured = all_performers[1..].to_vec();
+                    }
+                }
             }
 
-            if let Some(composers_str) = tag.get_string(&ItemKey::Composer) {
-                track.composers = parser::get_raw_credits(composers_str);
-            }
-            if let Some(producers_str) = tag.get_string(&ItemKey::Producer) {
-                track.producers = parser::get_raw_credits(producers_str);
-            }
-
+            // --- Arte de Portada ---
             let mut arts = Vec::new();
             for pic in tag.pictures() {
                 match picture_to_cover(&pic.data(), pic.description(), cfg.cover_art_dir.clone()) {
@@ -169,7 +216,7 @@ impl LocalMetadata {
                 }
             }
             if !arts.is_empty() {
-                track.artwork = Some(arts);
+                track.artworks = Some(arts);
             }
         }
 

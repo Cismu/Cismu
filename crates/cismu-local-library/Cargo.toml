@@ -15,8 +15,6 @@ bytesize = { version = "2.0.1", features = ["serde"] }
 chromaprint = "0.2.0"
 cismu-core = { version = "0.1.0", path = "../cismu-core" }
 cismu-paths = { version = "0.1.0", path = "../cismu-paths" }
-config = "0.15.11"
-derive_builder = "0.20.2"
 dunce = "1.0.5"
 futures = "0.3.31"
 hex = "0.4.3"
@@ -24,25 +22,22 @@ humantime-serde = "1.1.1"
 image = "0.25.6"
 jpeg-encoder = "0.6.1"
 lofty = "0.22.4"
-notify = "8.0.0"
 num_cpus = "1.17.0"
-rand = "0.9.1"
 rustfft = "6.4.0"
 serde = { version = "1.0.219", features = ["derive"] }
 sha2 = "0.10.9"
-sugar_path = "1.2.0"
 symphonia = "0.5.4"
 thiserror = "2.0.12"
 tokio = { version = "1.45.1", features = ["rt-multi-thread", "sync"] }
 toml = "0.8.23"
 tracing = "0.1.41"
-indicatif = "0.18.0"
 refinery = { version = "0.8.16", features = ["rusqlite"] }
 rusqlite = "0.33.0"
 regex = "1.11.1"
 once_cell = "1.21.3"
 reqwest = { version = "0.12.22", features = ["json"] }
 serde_json = "1.0.141"
+strsim = "0.11.1"
 
 
 [dev-dependencies]

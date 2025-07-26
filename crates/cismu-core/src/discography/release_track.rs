@@ -1,3 +1,4 @@
+use serde::{Deserialize, Serialize};
 use std::{path::PathBuf, time::Duration};
 
 use crate::discography::{release::ReleaseId, song::SongId};
@@ -6,7 +7,7 @@ pub type ReleaseTrackId = u64;
 
 /// La Pista del Lanzamiento (ReleaseTrack): El "puente" entre la canción
 /// abstracta y el archivo físico, conteniendo todos los datos específicos del archivo.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ReleaseTrack {
     pub id: ReleaseTrackId,
 
@@ -25,7 +26,7 @@ pub struct ReleaseTrack {
 }
 
 /// Datos técnicos de la canción.
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct AudioDetails {
     pub duration: Duration,
     pub bitrate_kbps: Option<u32>,
@@ -36,7 +37,7 @@ pub struct AudioDetails {
 }
 
 /// Análisis de la canción.
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct AudioAnalysis {
     pub quality: Option<AudioQuality>,
     pub features: Option<Vec<f32>>,
@@ -44,14 +45,14 @@ pub struct AudioAnalysis {
 }
 
 /// Calidad de la grabación.
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct AudioQuality {
     pub score: f32,
     pub assessment: String,
 }
 
 /// Información técnica del archivo.
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct FileDetails {
     pub path: PathBuf,
     pub size: u64,

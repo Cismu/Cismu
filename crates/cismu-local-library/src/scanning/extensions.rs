@@ -134,11 +134,3 @@ impl std::fmt::Display for SupportedExtension {
         write!(f, "{}", self.as_str())
     }
 }
-
-/// Genera el hashmap por defecto
-pub fn default_extension_config() -> std::collections::HashMap<SupportedExtension, ExtensionConfig> {
-    SupportedExtension::ALL
-        .iter()
-        .map(|&ext| (ext, ext.config().clone()))
-        .collect()
-}

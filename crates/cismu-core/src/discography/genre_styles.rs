@@ -1,8 +1,10 @@
-use anyhow::Result;
 use std::{fmt, str::FromStr};
 
+use anyhow::Result;
+use serde::{Deserialize, Serialize};
+
 /// Define el género musical (se usa el modelo de Discogs).
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, specta::Type)]
 pub enum Genre {
     Rock,
     Electronic,
@@ -71,7 +73,7 @@ impl FromStr for Genre {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, specta::Type)]
 pub enum Style {
     // --- Ordenado por popularidad de Discogs ---
     PopRock,
@@ -99,11 +101,9 @@ pub enum Style {
     HeavyMetal,
     PsychedelicRock,
     FolkRock,
-    // --- Adiciones personales ---
     Jpop,
     Vocaloid,
-    // --- Variante por defecto ---
-    Custom(String),
+    Custom(std::string::String),
 }
 
 impl FromStr for Style {
