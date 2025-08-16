@@ -1,294 +1,385 @@
-/// All Enums (In SQLite they are converted to TEXT with CHECK)
-/// `updated_at` is automatically updated with a trigger
-
 Project cismu_local_library {
-  database_type: 'SQLite'
-  Note: '''Database for managing the user's local file discography.
-         It supports files without metadata, as enriched by APIs, and aims to be abstractly compatible.
-         It is inspired by Discogs and how Spotify represents and classifies data.'''
+  database_type: 'sqlite'
+  Note: 'Offline‑first Discogs/Spotify‑inspired schema with FTS, raw tags, unified recordings as central tracks, user data, and scan audit tables.'
 }
 
-/// Stores unique artist entries. Use `search_name` for normalized lookups,
-/// `real_name` for legal or full names, `bio`, and origin info for metadata.
 Table artists {
-  id             integer [pk, increment]
-  name           text    [not null, unique]
-  search_name    text    [not null]
-  real_name      text    
-  bio            text    
-  origin_city    text    
-  origin_country text    
-  created_at     text    [not null, default: `CURRENT_TIMESTAMP`]
-  updated_at     text    [not null, default: `CURRENT_TIMESTAMP`]
+  id integer [pk, increment]
+  name text [not null, unique]
+  search_name text [not null]
+  real_name text
+  bio text
+  origin_city text
+  origin_country text
+  created_at text [not null, default: `CURRENT_TIMESTAMP`]
+  updated_at text [not null, default: `CURRENT_TIMESTAMP`]
+
+
+  indexes {
+    (search_name) [name: 'idx_artists_search_name']
+  }
 }
 
-// Roles for artist credits
-enum ArtistRole {
-  "Performer",
-  "Featured",
-  "Composer",
-  "Producer",
-  "Remixer"
-}
-
-/// Holds alternative names or spellings for an artist (aliases, pseudonyms).
 Table artist_variations {
-  id        integer [pk, increment]
-  artist_id integer [not null]
-  variation text    [not null]
+  id integer [pk, increment]
+  artist_id integer [ref: > artists.id]
+  variation text [not null]
   indexes {
     (artist_id, variation) [unique]
   }
 }
 
-/// External URLs related to an artist (official website, social profiles, etc.).
 Table artist_sites {
-  id        integer [pk, increment]
-  artist_id integer [not null]
-  site_name text    [not null]
-  url       text    [not null]
+  id integer [pk, increment]
+  artist_id integer [ref: > artists.id]
+  site_name text [not null]
+  url text [not null]
   indexes {
     (artist_id, site_name) [unique]
   }
 }
 
-/// URLs for artist-related images (photos, logos), with descriptions.
 Table artist_images {
-  id          integer [pk, increment]
-  artist_id   integer [not null]
-  url         text    [not null]
-  description text    [not null]
+  id integer [pk, increment]
+  artist_id integer [ref: > artists.id]
+  url text [not null]
+  description text
 }
 
-/// External identifiers for an artist (MusicBrainz, Discogs IDs, etc.).
 Table artist_identifiers {
-  id         integer [pk, increment]
-  artist_id  integer [not null]
-  source     text    [not null, note: 'Ex: MusicBrainz, Discogs, Spotify']
-  identifier text    [not null]
+  id integer [pk, increment]
+  artist_id integer [ref: > artists.id]
+  source text [not null]
+  identifier text [not null]
   indexes {
     (artist_id, source) [unique]
   }
 }
 
-// Cascade delete artist-related tables when an artist is removed
-Ref: artist_variations.artist_id    > artists.id [delete: cascade]
-Ref: artist_sites.artist_id         > artists.id [delete: cascade]
-Ref: artist_images.artist_id        > artists.id [delete: cascade]
-Ref: artist_identifiers.artist_id   > artists.id [delete: cascade]
-
-/// Master list of music genres. Mapped to releases via `release_genres`.
-Table genres {
-  id   integer [pk, increment]
-  name Genres  [not null, unique]
-}
-
-/// Master list of music styles (subgenres).
-Table styles {
-  id   integer [pk, increment]
-  name text    [not null, unique]
-}
+// GENRES & STYLES
 
 /// Enumeration of allowed genre strings (stored as TEXT).
 enum Genres {
-  "Rock",
-  "Electronic",
-  "Pop",
-  "Folk, World, & Country",
-  "Jazz",
-  "Funk / Soul",
-  "Classical",
-  "Hip Hop",
-  "Latin",
-  "Stage & Screen",
-  "Reggae",
-  "Blues",
-  "Non-Music",
-  "Children's",
-  "Brass & Military",
+  "Rock"
+  "Electronic"
+  "Pop"
+  "Folk, World, & Country"
+  "Jazz"
+  "Funk / Soul"
+  "Classical"
+  "Hip Hop"
+  "Latin"
+  "Stage & Screen"
+  "Reggae"
+  "Blues"
+  "Non-Music"
+  "Children's"
+  "Brass & Military"
 }
 
-/// Stores image assets tied to a release (cover, back, booklet, etc.).
-Table artworks {
-  id          integer [pk, increment]
-  url         text    [not null]
-  mime_type   text    
-  description text    
-  hash        text    
-  type        ArtworkType [not null]
+// Discogs® genre list.
+Table genres {
+  id integer [pk, increment]
+  name Genres [not null, unique]
 }
+
+// On the application side, 
+// when something is read as genre or style and is not in the list of genres, 
+// it will be a style.
+Table styles {
+  id integer [pk, increment]
+  name text [not null, unique]
+}
+
+// ARTWORKS
 
 /// Different roles for artwork images.
 enum ArtworkType {
-  "Front",   // Main cover
-  "Back",    // Back cover
-  "Media",   // Disc or media label
-  "Booklet", // Insert pages
-  "Other",   // Stickers, obi, etc.
+  Front   // Main cover
+  Back    // Back cover
+  Media   // Disc or media label
+  Booklet // Insert pages
+  Other   // Stickers, obi, etc.
 }
 
-// ================== ENUMS FOR releases ==================
-enum ReleaseStatus { "Official", "Unofficial", "Other" }
-enum ReleaseMedia  { "CD", "LP", "DVD", "Digital", "Other" }
-enum ReleaseType   { "Album", "EP", "Single", "Compilation", "Mix", "Other" }
+Table artworks {
+  id integer [pk, increment]
+  url text [not null]
+  mime_type text
+  description text
+  hash text
+  type ArtworkType [not null]
+}
 
-/// Core information about each release (album, EP, single, compilation).
+// RELEASES & FORMATS
+
+// Authorized release status
+Enum ReleaseStatus {
+  Official
+  Unofficial
+  Other
+}
+
+Enum ReleaseType {
+  // A standard full-length studio release.
+  Album
+  // Extended Play: shorter than an album but longer than a single.
+  EP
+  // A release containing one or a few main tracks.
+  Single
+  // A collection of previously released tracks.
+  Compilation
+  // A continuous mix of tracks like a DJ set or mixtape.
+  Mix
+  // Any other type like a soundtrack or live recording.
+  Other
+}
+
+Enum ReleaseMedia {
+  CD      // Compact Disc format.
+  LP      // Long Play vinyl record format.
+  Digital // A non-physical release for download or streaming.
+  Other
+}
+
+Enum ArtistRole {
+  // The main artist or band credited for performing the track.
+  Performer
+
+  // A guest artist who contributes to the track but is not the main performer.
+  Featured
+  
+  // The creator of the musical melody and harmony.
+  Composer
+  
+  // The person who oversees and manages the creative and technical recording process.
+  Producer
+  
+  // An artist who creates a new version of a track by altering the original audio.
+  Remixer
+}
+
 Table releases {
-  id             integer       [pk, increment]
-  title          text          [not null]
-  release_date   text          
-  release_status ReleaseStatus [not null, default: "Other"]
-  type           ReleaseType   [not null, default: "Album"]
-  country        text          
-  total_discs    integer       [default: 1]
-  disc_number    integer       [default: 1]
-  notes          text          
-  created_at     text          [not null, default: `CURRENT_TIMESTAMP`]
-  updated_at     text          [not null, default: `CURRENT_TIMESTAMP`]
+  id integer [pk, increment]
+  title text [not null]
+  release_date text [not null]
+  release_status ReleaseStatus [not null, default: 'Other']
+  type ReleaseType [not null, default: 'Album']
+  country text
+  total_discs integer [default: 1]
+  notes text
+  created_at text [not null, default: `CURRENT_TIMESTAMP`]
+  updated_at text [not null, default: `CURRENT_TIMESTAMP`]
 }
 
-/// Physical/digital format details per release (CD, LP, etc.).
 Table release_formats {
-  id         integer      [pk, increment]
-  release_id integer      [not null]
-  media      ReleaseMedia [not null, default: "Other"]
+  id integer [pk, increment]
+  release_id integer [ref: > releases.id]
+  media ReleaseMedia [not null, default: 'Other']
 }
-Ref: release_formats.release_id > releases.id [delete: cascade]
 
-/// Many-to-many linking table for releases and genres.
 Table release_genres {
-  id         integer  [pk, increment]
-  release_id integer  [not null]
-  genre_id   integer  [not null]
+  id integer [pk, increment]
+  release_id integer [ref: > releases.id]
+  genre_id integer [ref: > genres.id]
   indexes {
     (release_id, genre_id) [unique]
   }
 }
-Ref: release_genres.release_id > releases.id [delete: cascade]
-Ref: release_genres.genre_id   > genres.id
 
-/// Many-to-many linking table for releases and styles.
 Table release_styles {
-  id         integer  [pk, increment]
-  release_id integer  [not null]
-  style_id   integer  [not null]
+  id integer [pk, increment]
+  release_id integer [ref: > releases.id]
+  style_id integer [ref: > styles.id]
   indexes {
     (release_id, style_id) [unique]
   }
 }
-Ref: release_styles.release_id > releases.id [delete: cascade]
-Ref: release_styles.style_id   > styles.id
 
-/// External release IDs (Discogs, MusicBrainz RG, ASIN, etc.).
 Table release_identifiers {
-  id         integer  [pk, increment]
-  release_id integer  [not null]
-  source     text     [not null, note: 'Ex: Discogs, MusicBrainz ReleaseGroup, ASIN…']
-  value      text     [not null, note: 'External identifier value']
+  id integer [pk, increment]
+  release_id integer [ref: > releases.id]
+  source text [not null]
+  value text [not null]
   indexes {
     (release_id, source, value) [unique]
   }
 }
-Ref: release_identifiers.release_id > releases.id [delete: cascade]
 
-/// URLs for release pages (Discogs page, streaming links, etc.).
 Table release_sites {
-  id          integer  [pk, increment]
-  release_id  integer  [not null]
-  site_name   text     [not null, note: 'e.g. Discogs, Spotify, Bandcamp']
-  url         text     [not null]
+  id integer [pk, increment]
+  release_id integer [ref: > releases.id]
+  site_name text [not null]
+  url text [not null]
   indexes {
     (release_id, site_name) [unique]
   }
 }
-Ref: release_sites.release_id > releases.id [delete: cascade]
 
-/// Record labels or imprints (e.g. 'EMI', 'Exit Tunes').
 Table labels {
-  id   integer [pk, increment]
-  name text    [not null, unique]
+  id integer [pk, increment]
+  name text [not null, unique]
 }
 
-/// Label-specific metadata: catalog numbers, barcodes per release.
-table release_labels {
-  id             integer [pk, increment]
-  release_id     integer [not null]
-  label_id       integer [not null]
+Table release_labels {
+  id integer [pk, increment]
+  release_id integer [ref: > releases.id]
+  label_id integer [ref: > labels.id]
   catalog_number text
-  barcode        text
+  barcode text
   indexes {
     (release_id, label_id, catalog_number) [unique]
   }
 }
-Ref: release_labels.release_id > releases.id [delete: cascade]
-Ref: release_labels.label_id   > labels.id
 
-table release_artworks {
-  id             integer [pk, increment]
-  release_id     integer [not null]
-  artwork_id     integer [not null]
+Table release_artworks {
+  id integer [pk, increment]
+  release_id integer [ref: > releases.id]
+  artwork_id integer [ref: > artworks.id]
   indexes {
     (release_id, artwork_id) [unique]
   }
 }
-Ref: release_artworks.release_id > releases.id [delete: cascade]
-Ref: release_artworks.artwork_id > artworks.id
 
-Table release_artists {
-  id         integer     [pk, increment]
-  release_id integer     [not null]
-  artist_id  integer     [not null]
-  role       ArtistRole [not null, default: "Performer"]
-  position   integer     [note: 'Orden de aparición del artista en los créditos']
+// UNIFIED RECORDINGS AS CENTRAL TRACKS
+Table recordings {
+  id integer [pk, increment]
+  work_id integer [ref: > works.id]
+  recording_date text
+  note text
+}
+
+Table release_tracks {
+  id integer [pk, increment]
+  release_id integer [ref: > releases.id]
+  recording_id integer [ref: > recordings.id]
+  disc integer [default: 1]
+  track_code text
+  position integer [note: 'track number']
+  notes text
+  created_at text [not null, default: `CURRENT_TIMESTAMP`]
   indexes {
-    (release_id, artist_id, role) [unique]
+    (release_id, disc, position) [unique]
   }
 }
 
-Ref: release_artists.release_id > releases.id [delete: cascade]
-Ref: release_artists.artist_id  > artists.id
-
-table songs {
-  id       integer [pk, increment]
-  title    text    [not null]
-  acoustid text    [unique]
-}
-
-Table song_artists {
-  id         integer     [pk, increment]
-  song_id    integer     [not null]
-  artist_id  integer     [not null]
-  role       ArtistRole [not null, default: "Performer"]
-  position   integer     [note: 'Orden de aparición del artista en los créditos']
+// ARTISTS PER RECORDING
+Table recording_artists {
+  id integer [pk, increment]
+  recording_id integer [ref: > recordings.id]
+  artist_id integer [ref: > artists.id]
+  role ArtistRole [not null, default: 'Performer']
+  position integer [note: 'order in credits']
   indexes {
-    (song_id, artist_id, role) [unique]
+    (recording_id, artist_id, role) [unique]
   }
 }
 
-Ref: song_artists.song_id  > songs.id [delete: cascade]
-Ref: song_artists.artist_id > artists.id
+// LIBRARY FILES & METADATA
+Table library_files {
+  id integer [pk, increment]
+  release_track_id integer [ref: > release_tracks.id]
+  path text [not null, unique]
+  file_hash text
+  audio_format text
+  duration_seconds float
+  bitrate_kbps integer
+  sample_rate_hz integer
+  channels integer
+  fingerprint text
+  bpm float
+  quality_score float
+  quality_assessment text
+  features blob
+  added_at text [not null, default: `CURRENT_TIMESTAMP`]
+  updated_at text [not null, default: `CURRENT_TIMESTAMP`]
+}
 
+Table track_identifiers {
+  id integer [pk, increment]
+  release_track_id integer [ref: > release_tracks.id]
+  source text
+  value text
+  indexes {
+    (release_track_id, source) [unique]
+  }
+}
 
+Table raw_tags {
+  id integer [pk, increment]
+  library_file_id integer [ref: > library_files.id]
+  key text
+  value text
+  source text
+}
 
-// table release_tracks {
-//   id             integer [pk, increment]
-//   release_id     integer [not null]
-// }
+// OPTIONAL COMPLEXITY
+Table works {
+  id integer [pk, increment]
+  title text
+  composer_id integer [ref: > artists.id]
+  created_date text
+}
 
-// table audio_details {
-//   release_track_id integer [not null]
-//   track_id         integer [not null]
-//   duration_seconds "real"
-//   bitrate_kbps     integer
-//   sample_rate_hz   integer
-//   channels         integer
-//   fingerprint      text
-//   bpm              "real"
-//   quality_score    "real"
-//   quality_assessment text
-//   features         blob
+// USER INTERACTIONS LINKED TO TRACK LEVEL
+Table ratings {
+  id integer [pk, increment]
+  user text
+  release_track_id integer [ref: > release_tracks.id]
+  rating integer
+  rated_at text [not null, default: `CURRENT_TIMESTAMP`]
 
-//   indexes {
-//     (release_track_id, track_id) [unique]
-//   }
-// }
+  indexes {
+    (user, release_track_id) [unique]
+  }
+}
+
+Table play_history {
+  id integer [pk, increment]
+  release_track_id integer [ref: > release_tracks.id]
+  played_at text
+}
+
+Table playlists {
+  id integer [pk, increment]
+  name text
+  created_at text [default: `CURRENT_TIMESTAMP`]
+}
+
+Table playlist_tracks {
+  id integer [pk, increment]
+  playlist_id integer [ref: > playlists.id]
+  release_track_id integer [ref: > release_tracks.id]
+  position integer
+  indexes {
+    (playlist_id, release_track_id) [unique]
+  }
+}
+
+Table user_tags {
+  id integer [pk, increment]
+  release_track_id integer [ref: > release_tracks.id]
+  tag text
+}
+
+// AUDIT LOGS
+Table scan_runs {
+  id integer [pk, increment]
+  started_at text
+  finished_at text
+  source text
+}
+
+Table import_records {
+  id integer [pk, increment]
+  scan_run_id integer [ref: > scan_runs.id]
+  library_file_id integer [ref: > library_files.id]
+  status text
+  message text
+}
+
+// FULL‑TEXT SEARCH NOTES
+// Use raw SQL for:
+// CREATE VIRTUAL TABLE artists_fts USING fts5(name, real_name, bio);
+// CREATE VIRTUAL TABLE releases_fts USING fts5(title, notes);
+// CREATE VIRTUAL TABLE recordings_fts USING fts5(note);

@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::fmt;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum AvgRating {
@@ -9,6 +10,15 @@ pub enum AvgRating {
 impl Default for AvgRating {
     fn default() -> Self {
         AvgRating::Unrated
+    }
+}
+
+impl fmt::Display for AvgRating {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            AvgRating::Unrated => write!(f, "☆☆☆☆☆"),
+            AvgRating::Rated(rating) => fmt::Display::fmt(rating, f),
+        }
     }
 }
 
@@ -35,5 +45,21 @@ impl Rating {
 
     pub fn as_f32(&self) -> f32 {
         self.0 as f32 / Self::SCALE_FACTOR as f32
+    }
+}
+
+impl fmt::Display for Rating {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let full_stars = self.as_f32().round() as usize;
+        let empty_stars = 5 - full_stars;
+
+        for _ in 0..full_stars {
+            write!(f, "★")?;
+        }
+        for _ in 0..empty_stars {
+            write!(f, "☆")?;
+        }
+
+        Ok(())
     }
 }
