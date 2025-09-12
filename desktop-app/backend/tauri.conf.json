@@ -7,7 +7,7 @@
     "beforeDevCommand": "pnpm dev",
     "devUrl": "http://localhost:4321",
     "beforeBuildCommand": "pnpm build",
-    "frontendDist": "../../dist"
+    "frontendDist": "../../.cismu/dist"
   },
   "app": {
     "withGlobalTauri": true,
@@ -23,7 +23,7 @@
       "pattern": {
         "use": "isolation",
         "options": {
-          "dir": "../../dist-isolation"
+          "dir": "../../.cismu/dist-isolation"
         }
       }
     }
