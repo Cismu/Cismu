@@ -5,10 +5,10 @@ use thiserror::Error;
 use serde::{Deserialize, Serialize};
 
 /// Error del dominio para construir valores de rating válidos.
-#[derive(Error, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Error, Debug, Clone, PartialEq)]
 pub enum RatingError {
-    #[error("rating fuera de rango [0.0, 5.0]")]
-    OutOfRange,
+    #[error("Rating '{0}' is out of range, should be between [0.0, 5.0]")]
+    OutOfRange(f32),
 }
 
 /// Un rating que puede estar ausente (`Unrated`) o presente (`Rated`).
@@ -83,11 +83,11 @@ impl RatingValue {
     /// Construye desde un `f32` en [0, 5].
     pub fn try_new(value: f32) -> Result<Self, RatingError> {
         if !(0.0..=5.0).contains(&value) {
-            return Err(RatingError::OutOfRange);
+            return Err(RatingError::OutOfRange(value));
         }
         let scaled = (value * Self::SCALE_FACTOR as f32).round() as u32;
         if scaled > Self::MAX_VALUE {
-            return Err(RatingError::OutOfRange);
+            return Err(RatingError::OutOfRange(value));
         }
         Ok(Self(scaled))
     }

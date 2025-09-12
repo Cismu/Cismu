@@ -1,10 +1,12 @@
 use std::{fmt, str::FromStr};
 
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+/// Style is basically the same as a sub-genre.
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Style {
-    // --- Ordenado por popularidad de Discogs ---
     PopRock,
     House,
     Vocal,
@@ -30,13 +32,15 @@ pub enum Style {
     HeavyMetal,
     PsychedelicRock,
     FolkRock,
-    Vocaloid, // Miku Miku Beam!!
+    /// Miku Miku Beam!!
+    Vocaloid,
     Custom(std::string::String),
 }
 
 impl FromStr for Style {
     type Err = std::convert::Infallible;
 
+    /// Tries to parse a style from a string.
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let normalized = s.to_lowercase().replace(['-', ' '], "");
 
@@ -67,7 +71,7 @@ impl FromStr for Style {
             "psychedelicrock" => Style::PsychedelicRock,
             "folkrock" => Style::FolkRock,
             "vocaloid" => Style::Vocaloid,
-            _ => Style::Custom(s.to_string()),
+            _ => Style::Custom(s.to_string()), // Se usa `s`, la variable sin normalizar.
         };
 
         Ok(style)

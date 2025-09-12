@@ -5,7 +5,7 @@ use cismu_probe::prelude::*;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Camino feliz
     let r = cismu_probe::probe("song.flac")?;
-    println!("{} – features: {:?}", r.track.title.unwrap_or_default(), r.features);
+    println!("{:?} – features: {:?}", r.track.title, r.features);
 
     let probe = Probe::builder().build();
 

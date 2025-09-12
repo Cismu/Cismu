@@ -1,9 +1,17 @@
 use std::{fmt, str::FromStr};
+use thiserror::Error;
 
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-/// Define el género musical (se usa el modelo de Discogs).
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Error, Debug, Clone, PartialEq, Eq)]
+pub enum GenreError {
+    #[error("The type {0} is invalid; only variants of the enum are allowed.")]
+    Invalid(String),
+}
+
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Genre {
     Rock,
     Electronic,
@@ -46,7 +54,7 @@ impl fmt::Display for Genre {
 }
 
 impl FromStr for Genre {
-    type Err = anyhow::Error;
+    type Err = GenreError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let normalized = s.to_lowercase().replace(['-', ' ', ',', '&', '/'], "");
@@ -67,7 +75,7 @@ impl FromStr for Genre {
             "nonmusic" => Ok(Genre::NonMusic),
             "childrens" | "children" => Ok(Genre::Childrens),
             "brassandmilitary" | "brassmilitary" => Ok(Genre::BrassAndMilitary),
-            _ => Err(anyhow::anyhow!("Invalid genre: {}", s)),
+            _ => Err(GenreError::Invalid(s.to_string())), // Se usa el string original 's'
         }
     }
 }

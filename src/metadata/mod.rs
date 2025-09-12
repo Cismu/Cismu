@@ -1,5 +1,5 @@
 // Metadata structures
-pub mod rating;
+pub mod fields;
 
 pub mod model;
 pub mod reader;
