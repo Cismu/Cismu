@@ -9,10 +9,8 @@ lofty = "0.22.4"
 thiserror = "2.0.16"
 unicode-normalization = "0.1.24"
 serde = { version = "1.0.219", features = ["derive"], optional = true }
+bitflags = "2.9.4"
 
 [features]
 default = []
 serde = ["dep:serde"]
-
-[dev-dependencies]
-anyhow = "1.0.99"
