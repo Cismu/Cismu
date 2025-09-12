@@ -1,10 +1,10 @@
-use crate::{parsing::LocalMetadataConfig, scanning::LocalScannerConfig, storage::LocalStorageConfig};
+use crate::{parsing::LocalMetadataConfig, scanning::LocalScannerConfig};
 
 #[derive(Debug, Clone)]
 pub struct ConfigManager {
     pub scanner: LocalScannerConfig,
     pub metadata: LocalMetadataConfig,
-    pub storage: LocalStorageConfig,
+    // pub storage: LocalStorageConfig,
 }
 
 impl Default for ConfigManager {
@@ -12,7 +12,7 @@ impl Default for ConfigManager {
         Self {
             scanner: LocalScannerConfig::default(),
             metadata: LocalMetadataConfig::default(),
-            storage: LocalStorageConfig::default(),
+            // storage: LocalStorageConfig::default(),
         }
     }
 }
