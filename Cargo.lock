@@ -658,6 +658,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "celes"
+version = "2.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bc3ba3c5408fae183329e0d1ac8f8eed3cb7b647590fd93e6d6288f6b09db0be"
+dependencies = [
+ "phf 0.11.3",
+ "serde",
+]
+
+[[package]]
 name = "cesu8"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -759,6 +769,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "cismu-analyzer"
+version = "0.1.0"
+
+[[package]]
 name = "cismu-core"
 version = "0.1.0"
 dependencies = [
@@ -819,6 +833,17 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.14",
  "tracing",
+]
+
+[[package]]
+name = "cismu-probe"
+version = "0.1.0"
+dependencies = [
+ "celes",
+ "image",
+ "jpeg-encoder",
+ "lofty",
+ "thiserror 2.0.14",
 ]
 
 [[package]]
