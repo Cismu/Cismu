@@ -4,14 +4,14 @@ use cismu_probe::prelude::*;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Camino feliz
-    let r = cismu_probe::probe("song.flac")?;
-    println!("{:?} – features: {:?}", r.track.title, r.features);
+    // let r = cismu_probe::probe("song.flac")?;
+    // println!("{:?} – features: {:?}", r.track.title, r.features);
 
-    let probe = Probe::builder().build();
+    // let probe = Probe::builder().build();
 
-    let only_meta = probe.read_metadata("song.flac")?;
-    let only_feats = probe.analyze("song.flac")?;
-    let full = probe.run("song.flac")?;
+    // let only_meta = probe.read_metadata("song.flac")?;
+    // let only_feats = probe.analyze("song.flac")?;
+    // let full = probe.run("song.flac")?;
 
     // let folder: PathBuf = "/home/undead34/Music/Soulsheek".into();
     // let files = scan_dir(&folder);
