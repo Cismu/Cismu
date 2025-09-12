@@ -104,6 +104,7 @@ impl Probe {
         )
     }
 
+    /// Realiza análisis musical; la función depende más de la CPU.
     pub fn analyze<P: AsRef<Path>>(&self, path: P) -> Result<FeatureSet, Error> {
         let mut stream = self.decoder.open(path.as_ref())?;
         // crate::analysis::features::compute(&mut stream, self.cfg.features, self.cfg.max_duration_s)

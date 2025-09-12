@@ -1,5 +1,5 @@
 [workspace]
-members = ["./crates/*", "./desktop-app/backend", "crates/cismu-db"]
+members = ["./crates/*", "./desktop-app/backend"]
 resolver = "3"
 
 [workspace.package]

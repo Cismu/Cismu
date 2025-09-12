@@ -10,7 +10,7 @@ pub enum GenreError {
     Invalid(String),
 }
 
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize), serde(rename_all = "snake_case"))]
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Genre {
     Rock,
@@ -57,7 +57,9 @@ impl FromStr for Genre {
     type Err = GenreError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let normalized = s.to_lowercase().replace(['-', ' ', ',', '&', '/'], "");
+        let trimmed = s.trim();
+
+        let normalized = trimmed.to_lowercase().replace(['-', ' ', ',', '&', '/', '\'', '.'], "");
 
         match normalized.as_str() {
             "rock" => Ok(Genre::Rock),
@@ -75,7 +77,7 @@ impl FromStr for Genre {
             "nonmusic" => Ok(Genre::NonMusic),
             "childrens" | "children" => Ok(Genre::Childrens),
             "brassandmilitary" | "brassmilitary" => Ok(Genre::BrassAndMilitary),
-            _ => Err(GenreError::Invalid(s.to_string())), // Se usa el string original 's'
+            _ => Err(GenreError::Invalid(s.to_string())), // devolvemos el original
         }
     }
 }

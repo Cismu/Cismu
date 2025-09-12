@@ -98,10 +98,7 @@ fn decide_release_format(media_values: &[&str]) -> ReleaseFormat {
         }
     }
 
-    if let Some(other) = set
-        .into_iter()
-        .find(|f| matches!(f, ReleaseFormat::Other(_)))
-    {
+    if let Some(other) = set.into_iter().find(|f| matches!(f, ReleaseFormat::Other(_))) {
         return other;
     }
 

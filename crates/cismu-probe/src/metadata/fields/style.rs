@@ -2,9 +2,16 @@ use std::{fmt, str::FromStr};
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
+
+#[derive(Error, Debug, Clone, Copy)]
+pub enum StyleError {
+    #[error("Style cannot be empty!")]
+    InvalidInput,
+}
 
 /// Style is basically the same as a sub-genre.
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize), serde(rename_all = "snake_case"))]
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Style {
     PopRock,
@@ -38,11 +45,16 @@ pub enum Style {
 }
 
 impl FromStr for Style {
-    type Err = std::convert::Infallible;
+    type Err = StyleError;
 
     /// Tries to parse a style from a string.
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let normalized = s.to_lowercase().replace(['-', ' '], "");
+        let trimmed = s.trim();
+        if trimmed.is_empty() {
+            return Err(StyleError::InvalidInput);
+        }
+
+        let normalized = trimmed.to_lowercase().replace(['-', ' '], "");
 
         let style = match normalized.as_str() {
             "poprock" => Style::PopRock,
@@ -71,7 +83,7 @@ impl FromStr for Style {
             "psychedelicrock" => Style::PsychedelicRock,
             "folkrock" => Style::FolkRock,
             "vocaloid" => Style::Vocaloid,
-            _ => Style::Custom(s.to_string()), // Se usa `s`, la variable sin normalizar.
+            _ => Style::Custom(trimmed.to_string()), // Se usa `s`, la variable sin normalizar.
         };
 
         Ok(style)
