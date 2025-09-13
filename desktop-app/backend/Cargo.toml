@@ -33,6 +33,7 @@ cismu-paths = { version = "0.1.0", path = "../../crates/cismu-paths" }
 tauri-specta = { version = "=2.0.0-rc.21", features = ["derive", "typescript"] }
 specta-typescript = "0.0.9"
 specta = "=2.0.0-rc.22"
+cismu-probe = { version = "0.1.0", path = "../../crates/cismu-probe" }
 
 [profile.dev]
 incremental = true # Compile your binary in smaller steps.

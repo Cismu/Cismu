@@ -1,5 +1,8 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
-fn main() {
+
+use anyhow::Result;
+
+fn main() -> Result<()> {
     cismu_lib::run()
 }

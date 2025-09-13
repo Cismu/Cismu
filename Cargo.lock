@@ -749,6 +749,7 @@ dependencies = [
  "cismu-core",
  "cismu-local-library",
  "cismu-paths",
+ "cismu-probe",
  "log",
  "serde",
  "serde_json",
