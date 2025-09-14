@@ -2,6 +2,7 @@ use std::time::Duration;
 
 pub mod chroma;
 pub mod features;
+pub mod quality;
 
 /// Datos técnicos de la grabación.
 #[derive(Debug, Clone, PartialEq, Default)]

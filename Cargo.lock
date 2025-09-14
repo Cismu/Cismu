@@ -447,6 +447,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "bliss-audio"
+version = "0.11.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9efa224c03fc286d1b66b88946855b1418ea486fb1d8f772dc38c8e799d12e27"
+dependencies = [
+ "adler32",
+ "bliss-audio-aubio-rs",
+ "extended-isolation-forest",
+ "ffmpeg-next",
+ "ffmpeg-sys-next",
+ "log",
+ "ndarray",
+ "ndarray-stats",
+ "noisy_float",
+ "rcue",
+ "rustfft",
+ "serde",
+ "strum",
+ "strum_macros",
+ "thiserror 2.0.16",
+]
+
+[[package]]
 name = "bliss-audio-aubio-rs"
 version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -768,7 +791,7 @@ name = "cismu-core"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "bliss-audio",
+ "bliss-audio 0.10.2",
  "serde",
  "specta",
  "tracing",
@@ -791,7 +814,7 @@ dependencies = [
  "async-trait",
  "async-walkdir",
  "base64 0.22.1",
- "bliss-audio",
+ "bliss-audio 0.10.2",
  "bytesize",
  "chromaprint",
  "cismu-core",
@@ -838,10 +861,16 @@ dependencies = [
 name = "cismu-probe"
 version = "0.1.0"
 dependencies = [
+ "apodize",
  "bitflags 2.9.4",
+ "bliss-audio 0.11.1",
  "celes",
+ "chromaprint",
+ "ffmpeg-next",
  "lofty",
+ "rustfft",
  "serde",
+ "symphonia",
  "thiserror 2.0.16",
  "unicode-normalization",
 ]
@@ -1508,6 +1537,7 @@ dependencies = [
  "num-traits",
  "rand 0.8.5",
  "rand_distr",
+ "serde",
 ]
 
 [[package]]

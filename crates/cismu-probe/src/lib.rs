@@ -8,7 +8,7 @@ pub mod pipeline;
 
 use std::path::Path;
 
-pub use analysis::features::FeatureSet;
+pub use analysis::features::Analysis;
 pub use metadata::model::{Tag, Track};
 pub use pipeline::probe::Probe;
 
@@ -26,6 +26,6 @@ pub fn read_metadata<P: AsRef<Path>>(path: P) -> Result<Track, Error> {
 }
 
 /// Solo análisis (si ya tenés PCM o querés saltarte el reader por defecto).
-pub fn analyze<P: AsRef<Path>>(path: P) -> Result<FeatureSet, Error> {
+pub fn analyze<P: AsRef<Path>>(path: P) -> Result<Analysis, Error> {
     pipeline::probe::Probe::default().analyze(path)
 }

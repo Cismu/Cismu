@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use crate::{
-    FeatureSet, Track, audio::AudioDecoder, error::Error, metadata::reader::MetadataReader,
+    Analysis, Track, analysis::features, audio::AudioDecoder, error::Error, metadata::reader::MetadataReader,
     pipeline::config::ProbeConfig, prelude::FeatureFlags,
 };
 
@@ -58,10 +58,6 @@ pub struct Probe {
 }
 
 pub fn default_reader() -> Box<dyn MetadataReader + Send + Sync> {
-    #[cfg(feature = "lofty")]
-    {
-        Box::new(crate::metadata::reader::LoftyReader::new())
-    }
     #[cfg(not(feature = "lofty"))]
     {
         Box::new(crate::metadata::reader::NoopReader)
@@ -69,11 +65,11 @@ pub fn default_reader() -> Box<dyn MetadataReader + Send + Sync> {
 }
 
 pub fn default_decoder() -> Box<dyn AudioDecoder + Send + Sync> {
-    #[cfg(feature = "symphonia")]
+    #[cfg(feature = "ffmpeg")]
     {
-        Box::new(crate::audio::decoder::SymphoniaDecoder::new())
+        Box::new(crate::audio::decoder::FFmpegNativeDecoder::new())
     }
-    #[cfg(not(feature = "symphonia"))]
+    #[cfg(not(feature = "ffmpeg"))]
     {
         Box::new(crate::audio::decoder::NoopDecoder)
     }
@@ -83,9 +79,11 @@ impl Probe {
     pub fn builder() -> ProbeBuilder {
         ProbeBuilder::default()
     }
+
     pub fn config(&self) -> &ProbeConfig {
         &self.cfg
     }
+
     pub fn config_mut(&mut self) -> &mut ProbeConfig {
         &mut self.cfg
     }
@@ -105,10 +103,9 @@ impl Probe {
     }
 
     /// Realiza análisis musical; la función depende más de la CPU.
-    pub fn analyze<P: AsRef<Path>>(&self, path: P) -> Result<FeatureSet, Error> {
+    pub fn analyze<P: AsRef<Path>>(&self, path: P) -> Result<Analysis, Error> {
         let mut stream = self.decoder.open(path.as_ref())?;
-        // crate::analysis::features::compute(&mut stream, self.cfg.features, self.cfg.max_duration_s)
-        unimplemented!()
+        features::compute(stream.as_mut(), path.as_ref(), self.cfg.features).map_err(|e| e.into())
     }
 }
 
@@ -121,5 +118,5 @@ impl Default for Probe {
 #[derive(Debug, Clone)]
 pub struct ProbeResult {
     pub track: Track,
-    pub features: FeatureSet,
+    pub features: Analysis,
 }
