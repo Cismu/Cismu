@@ -1,5 +1,5 @@
 use anyhow::Result;
-use cismu_probe::Probe;
+use cismu_probe::{probe, read_metadata};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() -> Result<()> {
@@ -9,10 +9,9 @@ pub fn run() -> Result<()> {
     //     .run(tauri::generate_context!())
     //     .expect("error while running tauri application");
 
-    let p = Probe::builder().build();
-    let path = "/home/undead34/Music/Soulsheek/[2015] Is It Wrong to Try to Pick Up Girls in a Dungeon [Single] Hey World [1000564509] [FLAC]/01 Hey World.flac";
-    let f = p.analyze(path)?;
-    println!("{:?}", f);
+    let path = "/home/undead34/Music/Soulsheek/Luka Luka ★ Night Fever.flac";
+    let results = read_metadata(path)?;
+    println!("{:?}", results);
 
     Ok(())
 }

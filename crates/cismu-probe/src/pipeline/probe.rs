@@ -62,6 +62,10 @@ pub fn default_reader() -> Box<dyn MetadataReader + Send + Sync> {
     {
         Box::new(crate::metadata::reader::NoopReader)
     }
+    #[cfg(feature = "lofty")]
+    {
+        Box::new(crate::metadata::reader::LoftyReader::new())
+    }
 }
 
 pub fn default_decoder() -> Box<dyn AudioDecoder + Send + Sync> {

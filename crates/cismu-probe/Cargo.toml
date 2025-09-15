@@ -6,23 +6,23 @@ license.workspace = true
 
 [dependencies]
 celes = "2.6.0"
-lofty = "0.22.4"
 thiserror = "2.0.16"
 unicode-normalization = "0.1.24"
 bitflags = "2.9.4"
 bliss-audio = "0.11.1"
-
-serde = { version = "1.0.219", features = ["derive"], optional = true }
 chromaprint = "0.2.0"
-ffmpeg-next = { version = "7.1.0", optional = true }
-symphonia = { version = "0.5", optional = true, default-features = false }
 rustfft = "6.4.0"
 apodize = "1.0.0"
+
+lofty = { version = "0.22.4", optional = true }
+serde = { version = "1.0.219", features = ["derive"], optional = true }
+ffmpeg-next = { version = "7.1.0", optional = true }
+symphonia = { version = "0.5", optional = true, default-features = false }
 
 
 [features]
 serde = ["dep:serde", "bliss-audio/serde"]
 symphonia = ["dep:symphonia"]
 ffmpeg = ["dep:ffmpeg-next"]
-lofty = []
-default = ["ffmpeg"]
+lofty = ["dep:lofty"]
+default = ["ffmpeg", "lofty"]

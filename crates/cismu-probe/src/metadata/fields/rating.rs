@@ -126,7 +126,7 @@ impl fmt::Display for RatingValue {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AvgRating {
     None,
-    Some { mean: RatingValue, count: u32 },
+    Some { mean: RatingValue, count: u64 },
 }
 
 impl AvgRating {
@@ -137,7 +137,7 @@ impl AvgRating {
     /// Agrega un iterador de `Rating` (ignora `Unrated`).
     pub fn from_iter<I: IntoIterator<Item = Rating>>(it: I) -> Self {
         let mut sum: u128 = 0;
-        let mut n: u32 = 0;
+        let mut n: u64 = 0;
         for r in it.into_iter().filter_map(|r| r.inner()) {
             sum += r.scaled() as u128;
             n += 1;
@@ -189,7 +189,7 @@ impl AvgRating {
         }
     }
 
-    pub fn count(&self) -> u32 {
+    pub fn count(&self) -> u64 {
         match *self {
             Self::Some { count, .. } => count,
             _ => 0,

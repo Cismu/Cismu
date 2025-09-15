@@ -1,4 +1,3 @@
-use crate::{audio::decoder::ffmpeg_native::FFmpegNativeError, prelude::FeatureError};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -10,8 +9,13 @@ pub enum Error {
     Unsupported(&'static str),
 
     #[error("Error during feature analysis")]
-    Analysis(#[from] FeatureError),
+    Analysis(#[from] crate::analysis::features::FeatureError),
 
+    #[cfg(feature = "ffmpeg")]
     #[error(transparent)]
-    FFmpegNative(#[from] FFmpegNativeError),
+    FfmpegNative(#[from] crate::audio::decoder::FFmpegNativeError),
+
+    #[cfg(feature = "lofty")]
+    #[error(transparent)]
+    Lofty(#[from] crate::metadata::reader::LoftyReaderError),
 }
